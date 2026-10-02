@@ -33,10 +33,16 @@ jobs:
         working-directory: frontend
 
       - name: Build static site
-        run: npm run build
+        run: |
+          case "$NEXT_PUBLIC_API_URL" in
+            https://*) ;;
+            *) echo "Set the NEXT_PUBLIC_API_URL Actions variable to the public HTTPS API URL." >&2; exit 1 ;;
+          esac
+          npm run build
         working-directory: frontend
         env:
           NODE_ENV: production
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
