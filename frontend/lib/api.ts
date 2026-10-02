@@ -1,11 +1,21 @@
 export type Curriculum = {
   id: string;
   name: string;
-  grades: string[];
+  description: string;
+  is_sample: boolean;
 };
 
 export type CurriculumResponse = {
   curricula: Curriculum[];
+};
+
+export type CatalogItem = {
+  id: number;
+  name: string;
+};
+
+export type CatalogResponse = {
+  items: CatalogItem[];
 };
 
 export type HealthResponse = {
@@ -70,6 +80,26 @@ export function getHealth(): Promise<HealthResponse> {
 
 export function getCurricula(): Promise<CurriculumResponse> {
   return request<CurriculumResponse>('/api/curriculum');
+}
+
+export function getGrades(curriculumCode: string): Promise<CatalogResponse> {
+  return request<CatalogResponse>(`/api/curriculum/${encodeURIComponent(curriculumCode)}/grades`);
+}
+
+export function getSubjects(gradeId: number): Promise<CatalogResponse> {
+  return request<CatalogResponse>(`/api/grades/${gradeId}/subjects`);
+}
+
+export function getBooks(subjectId: number): Promise<CatalogResponse> {
+  return request<CatalogResponse>(`/api/subjects/${subjectId}/books`);
+}
+
+export function getChapters(bookId: number): Promise<CatalogResponse> {
+  return request<CatalogResponse>(`/api/books/${bookId}/chapters`);
+}
+
+export function getTopics(chapterId: number): Promise<CatalogResponse> {
+  return request<CatalogResponse>(`/api/chapters/${chapterId}/topics`);
 }
 
 export function generateQuestions(input: GenerateRequest): Promise<GenerateResponse> {

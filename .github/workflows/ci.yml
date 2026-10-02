@@ -20,6 +20,12 @@ jobs:
         working-directory: backend
       - run: ruff check app tests
         working-directory: backend
+      - run: alembic upgrade head
+        working-directory: backend
+      - run: python -m app.seed_sample
+        working-directory: backend
+      - run: python -m app.seed_sample
+        working-directory: backend
 
   frontend:
     runs-on: ubuntu-latest

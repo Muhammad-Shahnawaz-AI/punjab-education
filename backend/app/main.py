@@ -5,7 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.curriculum import router as curriculum_router
+
 app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0")
+app.include_router(curriculum_router)
 cors_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -43,15 +46,6 @@ class GenerateRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-@app.get("/api/curriculum")
-def curriculum():
-    return {
-        "curricula": [
-            {"id": "punjab-2025", "name": "Punjab Curriculum", "grades": ["9", "10", "11", "12"]}
-        ]
-    }
 
 
 @app.post("/api/ai/generate")

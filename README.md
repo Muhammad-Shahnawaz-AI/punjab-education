@@ -22,6 +22,22 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+## Database and sample catalog
+
+The backend defaults to local SQLite. Set `DATABASE_URL` to a PostgreSQL URL for a hosted database.
+Create the schema and optionally load the explicitly non-official placeholder catalog:
+
+```bash
+cd backend
+alembic upgrade head
+python -m app.seed_sample
+```
+
+The seed is safe to rerun and contains only generic `Sample ...` labels, marked as placeholder data.
+It is not Punjab curriculum content. Catalog endpoints start at `/api/curriculum`, then follow
+`/api/curriculum/{code}/grades`, `/api/grades/{id}/subjects`, `/api/subjects/{id}/books`,
+`/api/books/{id}/chapters`, and `/api/chapters/{id}/topics`.
+
 ## Next implementation layer
 1. Import the complete Figma screen set and reproduce each screen/component.
 2. Add PostgreSQL models for curriculum, users, assessments, attempts and analytics.
