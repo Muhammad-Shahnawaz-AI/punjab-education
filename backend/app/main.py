@@ -5,25 +5,28 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
 
-app = FastAPI(title='Punjab Education Intelligence Platform API', version='0.1.0')
+app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0")
 cors_origins = [
     origin.strip()
-    for origin in os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
     if origin.strip()
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-CurriculumName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+CurriculumName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
 SubjectName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 BookName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
 ChapterName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
 TopicName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
 
 class GenerateRequest(BaseModel):
     curriculum: CurriculumName
@@ -31,19 +34,32 @@ class GenerateRequest(BaseModel):
     book: BookName
     chapter: ChapterName
     topic: TopicName
-    question_type: Literal['mcq','subjective','quiz','assignment']
+    question_type: Literal["mcq", "subjective", "quiz", "assignment"]
     count: int = Field(default=10, ge=1, le=50)
-    difficulty: Literal['easy','medium','hard'] = 'medium'
-    language: Literal['en','ur'] = 'en'
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    language: Literal["en", "ur"] = "en"
 
-@app.get('/health')
-def health(): return {'status':'ok'}
 
-@app.get('/api/curriculum')
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/api/curriculum")
 def curriculum():
-    return {'curricula':[{'id':'punjab-2025','name':'Punjab Curriculum','grades':['9','10','11','12']}]} 
+    return {
+        "curricula": [
+            {"id": "punjab-2025", "name": "Punjab Curriculum", "grades": ["9", "10", "11", "12"]}
+        ]
+    }
 
-@app.post('/api/ai/generate')
+
+@app.post("/api/ai/generate")
 def generate(req: GenerateRequest):
     # First-cut contract. Connect this endpoint to the chosen LLM/RAG service next.
-    return {'status':'queued','request':req.model_dump(),'items':[],'message':'AI provider integration pending.'}
+    return {
+        "status": "queued",
+        "request": req.model_dump(),
+        "items": [],
+        "message": "AI provider integration pending.",
+    }
