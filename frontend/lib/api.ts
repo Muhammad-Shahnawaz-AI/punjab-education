@@ -22,6 +22,32 @@ export type HealthResponse = {
   status: string;
 };
 
+export type AuthRole = 'student' | 'teacher' | 'admin';
+
+export type AuthUser = {
+  id: number;
+  email: string;
+  role: AuthRole;
+};
+
+export type AuthTokenResponse = {
+  access_token: string;
+  refresh_token: string;
+  token_type: 'bearer';
+  access_expires_in: number;
+  user: AuthUser;
+};
+
+export type AdminUserInput = {
+  email: string;
+  password: string;
+  role: AuthRole;
+};
+
+export type AdminUserListResponse = {
+  users: AuthUser[];
+};
+
 export type GenerateRequest = {
   curriculum: string;
   subject: string;
@@ -52,11 +78,70 @@ export class ApiError extends Error {
 }
 
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
+let refreshPromise: Promise<AuthTokenResponse | null> | null = null;
+let tokenUpdateListener: ((tokens: AuthTokenResponse) => void) | null = null;
+
+export function setAuthTokens(access: string | null, refresh: string | null): void {
+  accessToken = access;
+  refreshToken = refresh;
+}
+
+export function setTokenUpdateListener(
+  listener: ((tokens: AuthTokenResponse) => void) | null,
+): void {
+  tokenUpdateListener = listener;
+}
+
+async function performFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (accessToken !== null) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+  return fetch(`${apiUrl}${path}`, { ...init, headers });
+}
+
+async function renewAuthSession(): Promise<AuthTokenResponse | null> {
+  if (refreshToken === null) return null;
+  if (refreshPromise !== null) return refreshPromise;
+
+  const activeRefreshToken = refreshToken;
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: activeRefreshToken }),
+      });
+      if (!response.ok) {
+        setAuthTokens(null, null);
+        return null;
+      }
+      const tokens = (await response.json()) as AuthTokenResponse;
+      setAuthTokens(tokens.access_token, tokens.refresh_token);
+      tokenUpdateListener?.(tokens);
+      return tokens;
+    } catch {
+      return null;
+    }
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${apiUrl}${path}`, init);
+    response = await performFetch(path, init);
+    if (response.status === 401 && refreshToken !== null && path !== '/api/auth/refresh') {
+      const tokens = await renewAuthSession();
+      if (tokens !== null) response = await performFetch(path, init);
+    }
   } catch {
     throw new ApiError('The education service is unavailable. Please try again.', 0);
   }
@@ -100,6 +185,59 @@ export function getChapters(bookId: number): Promise<CatalogResponse> {
 
 export function getTopics(chapterId: number): Promise<CatalogResponse> {
   return request<CatalogResponse>(`/api/chapters/${chapterId}/topics`);
+}
+
+export async function registerUser(email: string, password: string): Promise<AuthTokenResponse> {
+  const tokens = await request<AuthTokenResponse>('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  setAuthTokens(tokens.access_token, tokens.refresh_token);
+  return tokens;
+}
+
+export async function loginUser(email: string, password: string): Promise<AuthTokenResponse> {
+  const tokens = await request<AuthTokenResponse>('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  setAuthTokens(tokens.access_token, tokens.refresh_token);
+  return tokens;
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return request<AuthUser>('/api/auth/me');
+}
+
+export async function refreshUserSession(): Promise<AuthTokenResponse> {
+  const tokens = await renewAuthSession();
+  if (tokens === null) {
+    throw new ApiError('Your session expired. Please sign in again.', 401);
+  }
+  return tokens;
+}
+
+export async function logoutUser(refresh: string): Promise<void> {
+  await request<{ status: string }>('/api/auth/logout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refresh }),
+  });
+  setAuthTokens(null, null);
+}
+
+export function getAdminUsers(): Promise<AdminUserListResponse> {
+  return request<AdminUserListResponse>('/api/auth/admin/users');
+}
+
+export function createAdminUser(input: AdminUserInput): Promise<AuthUser> {
+  return request<AuthUser>('/api/auth/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }
 
 export function generateQuestions(input: GenerateRequest): Promise<GenerateResponse> {

@@ -38,6 +38,22 @@ It is not Punjab curriculum content. Catalog endpoints start at `/api/curriculum
 `/api/curriculum/{code}/grades`, `/api/grades/{id}/subjects`, `/api/subjects/{id}/books`,
 `/api/books/{id}/chapters`, and `/api/chapters/{id}/topics`.
 
+## Authentication setup
+
+Configure a signing key of at least 32 characters before using authentication. Create the first
+administrator from environment variables; public registration creates student accounts only.
+
+```bash
+cd backend
+export JWT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+export BOOTSTRAP_ADMIN_EMAIL="admin@example.org"
+export BOOTSTRAP_ADMIN_PASSWORD="<choose-a-strong-password>"
+python -m app.bootstrap_admin
+```
+
+The password above is a value you provide at runtime, not a repository default. Keep the signing
+key and bootstrap password out of source control.
+
 ## Next implementation layer
 1. Import the complete Figma screen set and reproduce each screen/component.
 2. Add PostgreSQL models for curriculum, users, assessments, attempts and analytics.

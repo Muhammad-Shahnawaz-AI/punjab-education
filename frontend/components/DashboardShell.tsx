@@ -7,7 +7,9 @@ import {
   ClipboardCheck,
   GraduationCap,
   LayoutDashboard,
+  LogOut,
   Menu,
+  ShieldCheck,
   Settings,
   Sparkles,
   Users,
@@ -16,6 +18,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
+import type { AuthUser } from '../lib/api';
 
 const navigation = [
   { label: 'Overview', href: '/', icon: LayoutDashboard },
@@ -24,9 +27,18 @@ const navigation = [
   { label: 'Assessments', href: '/assessments', icon: ClipboardCheck },
   { label: 'Students', href: '/students', icon: Users },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { label: 'User Management', href: '/admin/users', icon: ShieldCheck },
 ];
 
-export function DashboardShell({ children }: { children: ReactNode }) {
+export function DashboardShell({
+  children,
+  user,
+  onLogout,
+}: {
+  children: ReactNode;
+  user: AuthUser;
+  onLogout: () => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
 
@@ -57,7 +69,15 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           Workspace
         </div>
         <nav aria-label="Main navigation" className="space-y-1">
-          {navigation.map(({ label, href, icon: Icon }) => (
+          {navigation
+            .filter(({ href }) => {
+              if (href === '/admin/users') return user.role === 'admin';
+              if (user.role === 'student') {
+                return ['/', '/curriculum', '/assessments'].includes(href);
+              }
+              return href !== '/admin/users';
+            })
+            .map(({ label, href, icon: Icon }) => (
             <Link
               key={href}
               aria-current={pathname === href ? 'page' : undefined}
@@ -69,20 +89,22 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               {label}
               <ChevronRight className="ml-auto" size={15} />
             </Link>
-          ))}
+            ))}
         </nav>
-        <div className="mt-auto rounded-3xl bg-[var(--yellow)] p-4">
-          <div className="text-sm font-semibold">AI content ready</div>
-          <p className="mt-1 text-xs text-slate-600">
-            Generate curriculum-aligned questions in seconds.
-          </p>
-          <Link
-            href="/ai-generator"
-            className="mt-3 inline-flex rounded-xl bg-white px-3 py-2 text-xs font-semibold"
-          >
-            Let&apos;s create
-          </Link>
-        </div>
+        {user.role !== 'student' && (
+          <div className="mt-auto rounded-3xl bg-[var(--yellow)] p-4">
+            <div className="text-sm font-semibold">AI content ready</div>
+            <p className="mt-1 text-xs text-slate-600">
+              Generate curriculum-aligned questions in seconds.
+            </p>
+            <Link
+              href="/ai-generator"
+              className="mt-3 inline-flex rounded-xl bg-white px-3 py-2 text-xs font-semibold"
+            >
+              Let&apos;s create
+            </Link>
+          </div>
+        )}
         <Link
           href="/settings"
           className="mt-3 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-500 hover:bg-slate-50"
@@ -101,10 +123,17 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               <Menu />
             </button>
             <div>
-              <div className="text-xs text-slate-400">Punjab Education</div>
-              <p className="text-xl font-semibold lg:text-2xl">Teacher workspace</p>
+              <div className="text-xs text-slate-400">{user.role}</div>
+              <p className="text-xl font-semibold lg:text-2xl">{user.email}</p>
             </div>
           </div>
+          <button
+            aria-label="Sign out"
+            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2"
+            onClick={() => void onLogout()}
+          >
+            <LogOut size={18} /> <span className="hidden sm:inline">Sign out</span>
+          </button>
         </header>
         {children}
       </main>

@@ -6,9 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.auth import rate_limiter
 from app.database import get_db
 from app.main import app
-from app.models import Base, Book, Chapter, Curriculum, Grade, Subject, Topic
+from app.models import Base, Book, Chapter, Curriculum, Grade, Subject, Topic, User
+from app.security import issue_token_pair
 
 
 @pytest.fixture
@@ -48,5 +50,50 @@ def catalog_client() -> Generator[TestClient, None, None]:
         with TestClient(app) as client:
             yield client
     finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+@pytest.fixture
+def auth_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[tuple[TestClient, dict[str, str]], None, None]:
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-only-signing-key-that-is-long-enough-123")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    testing_sessions = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(engine)
+
+    def override_get_db() -> Generator[Session, None, None]:
+        db = testing_sessions()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    roles = {
+        "teacher": User(email="teacher@example.com", hashed_password="unused", role="teacher"),
+        "admin": User(email="admin@example.com", hashed_password="unused", role="admin"),
+    }
+    tokens: dict[str, str] = {}
+    with testing_sessions.begin() as db:
+        db.add_all(list(roles.values()))
+        db.flush()
+        for role, user in roles.items():
+            access_token, _, _ = issue_token_pair(db, user)
+            tokens[role] = access_token
+
+    with rate_limiter.lock:
+        rate_limiter.attempts.clear()
+    try:
+        with TestClient(app) as client:
+            yield client, tokens
+    finally:
+        with rate_limiter.lock:
+            rate_limiter.attempts.clear()
         app.dependency_overrides.clear()
         engine.dispose()

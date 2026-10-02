@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { DashboardShell } from '../../components/DashboardShell';
+import { ProtectedDashboard } from '../../components/ProtectedDashboard';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return <ProtectedDashboard>{children}</ProtectedDashboard>;
 }

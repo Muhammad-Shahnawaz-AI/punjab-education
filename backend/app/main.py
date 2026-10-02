@@ -5,9 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.auth import router as auth_router
 from app.curriculum import router as curriculum_router
 
 app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0")
+app.include_router(auth_router)
 app.include_router(curriculum_router)
 cors_origins = [
     origin.strip()
