@@ -28,10 +28,12 @@ and their connection.
    `https://punjab-education-web.onrender.com`; the API is at the URL Render assigns to
    `punjab-education-api`. If Render requires different service names because those names are
    already in use, update the frontend URL in the API service's `CORS_ORIGINS` setting to match.
-4. In the Render dashboard, open the API service's **Shell** and run
-   `python -m app.bootstrap_admin` once to create the initial admin account. After it succeeds,
-   remove `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from the API service's environment
-   variables.
+4. To initialize the database on Render's free plan (which does not provide Shell access), add
+   `DATABASE_URL`, `BOOTSTRAP_ADMIN_EMAIL`, and `BOOTSTRAP_ADMIN_PASSWORD` as GitHub Actions
+   repository secrets, then run **Actions → Initialize production database → Run workflow** on
+   `main`. Use the Neon PostgreSQL connection string for `DATABASE_URL`. After the workflow
+   succeeds, remove all three GitHub secrets and remove the two `BOOTSTRAP_ADMIN_*` variables from
+   the API service's environment.
 5. Verify the API at `<API service URL>/health`, then open the frontend and sign in with the
    bootstrap administrator account.
 
