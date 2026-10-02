@@ -21,33 +21,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Build static site
-        run: |
-          case "$NEXT_PUBLIC_API_URL" in
-            https://*) ;;
-            *) echo "Set the NEXT_PUBLIC_API_URL Actions variable to the public HTTPS API URL." >&2; exit 1 ;;
-          esac
-          npm run build
-        working-directory: frontend
-        env:
-          NODE_ENV: production
-          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+      - name: Validate static site
+        run: test -s static-version/index.html && test -s static-version/styles.css && test -s static-version/app.js
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/out
+          path: static-version
 
   deploy:
     environment:
