@@ -5,8 +5,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  basePath: process.env.NODE_ENV === 'production' ? '/punjab-education' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/punjab-education/' : '',
+  basePath: process.env.GITHUB_PAGES === 'true' ? '/punjab-education' : '',
+  assetPrefix: process.env.GITHUB_PAGES === 'true' ? '/punjab-education/' : '',
 };
 
 export default nextConfig;
