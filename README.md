@@ -12,6 +12,15 @@ npm install
 npm run dev
 ```
 
+## GitHub Pages static preview
+
+The standalone, API-free demonstration is in [`static-version/`](static-version/). It is separate
+from the Next.js frontend and FastAPI backend; account access, live curriculum, generation,
+assessments, and analytics are not available in this preview. The `Deploy GitHub Pages` workflow
+publishes this directory on pushes to `main`. In the repository settings, set **Pages → Build and
+deployment → Source** to **GitHub Actions**. The project site is
+`https://muhammad-shahnawaz-ai.github.io/punjab-education/`.
+
 ## Run backend
 ```bash
 cd backend
