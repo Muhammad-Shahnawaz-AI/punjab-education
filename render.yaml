@@ -26,8 +26,9 @@ services:
       - key: BOOTSTRAP_ADMIN_PASSWORD
         sync: false
 
-  - type: static
+  - type: web
     name: punjab-education-web
+    runtime: static
     branch: main
     rootDir: frontend
     buildCommand: npm ci && npm run build
