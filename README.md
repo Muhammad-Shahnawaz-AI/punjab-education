@@ -12,20 +12,11 @@ npm install
 npm run dev
 ```
 
-## GitHub Pages static preview
-
-The standalone, API-free demonstration is in [`static-version/`](static-version/). It is separate
-from the Next.js frontend and FastAPI backend; account access, live curriculum, generation,
-assessments, and analytics are not available in this preview. The `Deploy GitHub Pages` workflow
-publishes this directory on pushes to `main`. In the repository settings, set **Pages → Build and
-deployment → Source** to **GitHub Actions**. The project site is
-`https://muhammad-shahnawaz-ai.github.io/punjab-education/`.
-
 ## Deploy the application on Render with Neon
 
-The GitHub Pages site is only a static preview. The interactive Next.js frontend and FastAPI
-backend can be deployed together on Render; the backend uses Neon PostgreSQL. The root
-[`render.yaml`](render.yaml) defines both Render services and their connection.
+The interactive Next.js frontend and FastAPI backend can be deployed together on Render; the
+backend uses Neon PostgreSQL. The root [`render.yaml`](render.yaml) defines both Render services
+and their connection.
 
 1. In Neon, rotate the database password if the connection string has been shared, then copy a
    fresh PostgreSQL connection string from **Connect**. Keep it private.
@@ -42,8 +33,7 @@ backend can be deployed together on Render; the backend uses Neon PostgreSQL. Th
    remove `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from the API service's environment
    variables.
 5. Verify the API at `<API service URL>/health`, then open the frontend and sign in with the
-   bootstrap administrator account. Set the public GitHub Pages source independently if you want
-   to keep the static preview online.
+   bootstrap administrator account.
 
 The API applies Alembic migrations on startup. The Render free web service may spin down when
 inactive, so its first request after a quiet period can take longer. This project currently includes
