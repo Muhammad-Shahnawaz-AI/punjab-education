@@ -129,6 +129,26 @@ export type AIAnalyticsSummary = {
   insights: AIInsight[];
 };
 
+export type StudyBook = {
+  id: number;
+  title: string;
+  filename: string;
+  file_size: number;
+  page_count: number;
+  created_at: string;
+};
+
+export type StudyCitation = {
+  book_id: number;
+  book_title: string;
+  page_number: number;
+};
+
+export type StudyChatResponse = {
+  answer: string;
+  citations: StudyCitation[];
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -218,6 +238,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(message, response.status);
   }
 
+  if (response.headers.get('content-type')?.includes('application/pdf')) {
+    return (await response.blob()) as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -332,4 +355,35 @@ export function getAIInsights(): Promise<AIAnalyticsSummary> {
 
 export function getAIRecommendations(): Promise<{ status: string; items: { topic: string; type: string; recommendation: string }[] }> {
   return request<{ status: string; items: { topic: string; type: string; recommendation: string }[] }>('/api/ai/recommendations');
+}
+
+export function getStudyBooks(): Promise<StudyBook[]> {
+  return request<StudyBook[]>('/api/study/books');
+}
+
+export function uploadStudyBook(file: File, title: string): Promise<StudyBook> {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('title', title);
+  return request<StudyBook>('/api/study/books', { method: 'POST', body });
+}
+
+export function getStudyBookPdf(bookId: number): Promise<Blob> {
+  return request<Blob>(`/api/study/books/${bookId}/file`);
+}
+
+export function deleteStudyBook(bookId: number): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/study/books/${bookId}`, { method: 'DELETE' });
+}
+
+export function askAboutBooks(
+  bookIds: number[],
+  prompt: string,
+  language: 'en' | 'ur',
+): Promise<StudyChatResponse> {
+  return request<StudyChatResponse>('/api/study/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ book_ids: bookIds, prompt, language }),
+  });
 }

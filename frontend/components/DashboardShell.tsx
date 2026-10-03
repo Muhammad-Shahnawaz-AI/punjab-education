@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  BookMarked,
   BookOpen,
   ChevronRight,
   ClipboardCheck,
@@ -23,6 +24,7 @@ import type { AuthUser } from '../lib/api';
 const navigation = [
   { label: 'Overview', href: '/', icon: LayoutDashboard },
   { label: 'Curriculum', href: '/curriculum', icon: BookOpen },
+  { label: 'My Study Books', href: '/study-library', icon: BookMarked },
   { label: 'AI Generator', href: '/ai-generator', icon: Sparkles },
   { label: 'Assessments', href: '/assessments', icon: ClipboardCheck },
   { label: 'Students', href: '/students', icon: Users },
@@ -73,7 +75,7 @@ export function DashboardShell({
             .filter(({ href }) => {
               if (href === '/admin/users') return user.role === 'admin';
               if (user.role === 'student') {
-                return ['/', '/curriculum', '/assessments'].includes(href);
+                return ['/', '/curriculum', '/assessments', '/study-library'].includes(href);
               }
               return href !== '/admin/users';
             })

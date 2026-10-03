@@ -7,6 +7,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -189,6 +190,35 @@ class AIGenerationLog(Base):
     response: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="completed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserBook(Base):
+    __tablename__ = "user_books"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100), default="application/pdf")
+    file_size: Mapped[int] = mapped_column(Integer)
+    page_count: Mapped[int] = mapped_column(Integer)
+    pdf_data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserBookChunk(Base):
+    __tablename__ = "user_book_chunks"
+    __table_args__ = (
+        UniqueConstraint("book_id", "position", name="uq_user_book_chunk_position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    book_id: Mapped[int] = mapped_column(
+        ForeignKey("user_books.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    page_number: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
 
 
 class GeneratedBatch(Base):

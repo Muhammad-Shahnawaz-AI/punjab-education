@@ -38,9 +38,8 @@ and their connection.
    bootstrap administrator account.
 
 The API applies Alembic migrations on startup. The Render free web service may spin down when
-inactive, so its first request after a quiet period can take longer. This project currently includes
-the application screens, authentication, curriculum endpoints, and database schema, but AI
-generation is still a placeholder and some dashboard/analytics values are illustrative.
+inactive, so its first request after a quiet period can take longer. Some dashboard/analytics values
+remain illustrative.
 
 ## Run backend
 ```bash
@@ -84,10 +83,30 @@ python -m app.bootstrap_admin
 The password above is a value you provide at runtime, not a repository default. Keep the signing
 key and bootstrap password out of source control.
 
+## Personal PDF study library
+
+Signed-in students, teachers, and administrators can open **My Study Books** to upload PDFs, keep
+them in a private library, preview or remove them, and ask study questions grounded in their selected
+books. PDFs and page-numbered extracted text chunks are stored in the configured database, so the
+library survives service restarts and is scoped to the uploading user. Uploads are limited to
+text-based PDFs up to 20 MB and 1,000 pages; scanned/image-only PDFs need OCR before upload.
+
+To enable AI answers, configure these variables on the backend service (for Render, use the API
+service environment settings):
+
+```text
+LLM_PROVIDER=openai
+LLM_MODEL=<provider-supported-model>
+LLM_API_KEY=<secret-configured-out-of-band>
+LLM_BASE_URL=https://api.openai.com/v1
+```
+
+`LLM_BASE_URL` is optional for the default OpenAI API and may point to an OpenAI-compatible HTTPS
+provider. Keys remain server-side. If the provider is unconfigured or unavailable, the study chat
+returns an explicit error instead of fabricating an answer. The retriever passes selected-book
+excerpts to the provider and includes book/page citations in the response.
+
 ## Next implementation layer
-1. Import the complete Figma screen set and reproduce each screen/component.
-2. Add PostgreSQL models for curriculum, users, assessments, attempts and analytics.
-3. Add RAG ingestion for approved Punjab curriculum material.
-4. Connect an LLM with structured JSON output + validation.
-5. Connect frontend API queries and authentication.
-6. Add student/teacher/admin workflows and production tests.
+1. Add OCR support for scanned PDFs.
+2. Ingest approved, openly licensed official Punjab curriculum material.
+3. Connect generated questions and study recommendations to assessment and student-attempt workflows.

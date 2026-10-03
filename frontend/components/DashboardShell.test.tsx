@@ -40,6 +40,7 @@ describe('DashboardShell', () => {
     );
 
     expect(screen.getByRole('link', { name: /curriculum/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /my study books/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /analytics/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /user management/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /let's create/i })).not.toBeInTheDocument();

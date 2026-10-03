@@ -9,14 +9,18 @@ from sqlalchemy.orm import Session
 
 from app.ai_service import generate_ai_bundle, persist_generation_log
 from app.auth import router as auth_router
+from app.book_library import router as book_library_router
 from app.curriculum import router as curriculum_router
 from app.database import get_db
 from app.models import AIGenerationLog, User
 from app.security import get_current_user, require_teacher
+from app.study_chat import router as study_chat_router
 
 app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(curriculum_router)
+app.include_router(book_library_router)
+app.include_router(study_chat_router)
 cors_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
