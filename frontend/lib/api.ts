@@ -24,10 +24,26 @@ export type HealthResponse = {
 
 export type AuthRole = 'student' | 'teacher' | 'admin';
 
+export type UserSettings = {
+  full_name?: string;
+  email?: string;
+  department?: string;
+  phone?: string;
+  interface_language?: 'English' | 'Urdu' | 'Punjabi';
+  time_zone?: string;
+  date_format?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+  notifications?: {
+    weekly_curriculum_summaries?: boolean;
+    assessment_reminders?: boolean;
+    ai_generated_content_alerts?: boolean;
+  };
+};
+
 export type AuthUser = {
   id: number;
   email: string;
   role: AuthRole;
+  settings?: Record<string, unknown>;
 };
 
 export type AuthTokenResponse = {
@@ -209,6 +225,18 @@ export async function loginUser(email: string, password: string): Promise<AuthTo
 
 export function getCurrentUser(): Promise<AuthUser> {
   return request<AuthUser>('/api/auth/me');
+}
+
+export function getUserSettings(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/api/auth/settings');
+}
+
+export function updateUserSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/api/auth/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings }),
+  });
 }
 
 export async function refreshUserSession(): Promise<AuthTokenResponse> {

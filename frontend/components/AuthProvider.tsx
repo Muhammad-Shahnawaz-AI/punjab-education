@@ -22,7 +22,11 @@ type AuthContextValue = {
   logout: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();

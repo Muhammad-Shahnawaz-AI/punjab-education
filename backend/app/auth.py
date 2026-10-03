@@ -5,7 +5,7 @@ from threading import Lock
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, EmailStr, StringConstraints
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -47,6 +47,11 @@ class PublicUser(BaseModel):
     id: int
     email: EmailStr
     role: Literal["student", "teacher", "admin"]
+    settings: dict[str, object] = Field(default_factory=dict)
+
+
+class SettingsUpdateRequest(BaseModel):
+    settings: dict[str, object] = Field(default_factory=dict)
 
 
 class TokenResponse(BaseModel):
@@ -176,6 +181,40 @@ def logout(
 @router.get("/auth/me", response_model=PublicUser)
 def get_me(user: User = Depends(get_current_user)) -> User:
     return user
+
+
+@router.get("/auth/settings", response_model=dict[str, object])
+def get_settings(user: User = Depends(get_current_user)) -> dict[str, object]:
+    return user.settings or {}
+
+
+@router.put("/auth/settings", response_model=dict[str, object])
+def update_settings(
+    payload: SettingsUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    valid_keys = {
+        "full_name",
+        "email",
+        "department",
+        "phone",
+        "interface_language",
+        "time_zone",
+        "date_format",
+        "notifications",
+    }
+    incoming = {str(key): value for key, value in payload.settings.items() if str(key) in valid_keys}
+    if not incoming:
+        raise HTTPException(status_code=400, detail="No valid settings provided")
+
+    merged = dict(user.settings or {})
+    merged.update(incoming)
+    user.settings = merged
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user.settings or {}
 
 
 @router.get("/auth/admin/users", response_model=UserListResponse)

@@ -71,6 +71,63 @@ def test_logout_revokes_refresh_token(auth_client: tuple[TestClient, dict[str, s
     assert revoked.status_code == 401
 
 
+def test_user_settings_are_persisted_and_merged(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client, _ = auth_client
+    tokens = client.post("/api/auth/register", json=credentials()).json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    initial = client.get("/api/auth/settings", headers=headers)
+    first_update = client.put(
+        "/api/auth/settings",
+        headers=headers,
+        json={
+            "settings": {
+                "full_name": "Aisha Khan",
+                "department": "English",
+                "notifications": {"weekly_curriculum_summaries": True},
+                "admin_only_flag": "ignore-me",
+            }
+        },
+    )
+    second_update = client.put(
+        "/api/auth/settings",
+        headers=headers,
+        json={
+            "settings": {
+                "phone": "+92 300 1112223",
+                "interface_language": "Urdu",
+            }
+        },
+    )
+    refreshed = client.get("/api/auth/settings", headers=headers)
+
+    assert initial.status_code == 200
+    assert initial.json() == {}
+    assert first_update.status_code == 200
+    assert first_update.json()["full_name"] == "Aisha Khan"
+    assert "admin_only_flag" not in first_update.json()
+    assert second_update.status_code == 200
+    assert refreshed.json()["department"] == "English"
+    assert refreshed.json()["phone"] == "+92 300 1112223"
+    assert refreshed.json()["interface_language"] == "Urdu"
+    assert refreshed.json()["notifications"]["weekly_curriculum_summaries"] is True
+
+
+def test_settings_reject_missing_valid_payload(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client, _ = auth_client
+    tokens = client.post("/api/auth/register", json=credentials()).json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    response = client.put(
+        "/api/auth/settings",
+        headers=headers,
+        json={"settings": {"not_allowed": "value", "another_invalid_key": 42}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "No valid settings provided"
+
+
 def test_students_cannot_access_teacher_or_admin_routes(
     auth_client: tuple[TestClient, dict[str, str]],
 ) -> None:
