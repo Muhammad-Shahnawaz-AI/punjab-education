@@ -171,6 +171,26 @@ class AttemptAnswer(Base):
     attempt: Mapped[Attempt] = relationship(back_populates="answers")
 
 
+class AIGenerationLog(Base):
+    __tablename__ = "ai_generation_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    curriculum: Mapped[str] = mapped_column(String(120), default="")
+    subject: Mapped[str] = mapped_column(String(120), default="")
+    book: Mapped[str] = mapped_column(String(160), default="")
+    chapter: Mapped[str] = mapped_column(String(160), default="")
+    topic: Mapped[str] = mapped_column(String(200), default="")
+    question_type: Mapped[str] = mapped_column(String(24), default="mcq")
+    count: Mapped[int] = mapped_column(Integer, default=1)
+    difficulty: Mapped[str] = mapped_column(String(16), default="medium")
+    language: Mapped[str] = mapped_column(String(8), default="en")
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    response: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="completed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class GeneratedBatch(Base):
     __tablename__ = "generated_batches"
 

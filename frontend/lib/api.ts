@@ -74,13 +74,59 @@ export type GenerateRequest = {
   count?: number;
   difficulty?: 'easy' | 'medium' | 'hard';
   language?: 'en' | 'ur';
+  grade?: string;
+  learning_objectives?: string;
+};
+
+export type GeneratedQuestionItem = {
+  question?: string;
+  options?: string[];
+  correct_answer?: string;
+  explanation?: string;
+  expected_answer?: string;
+  title?: string;
+  instructions?: string;
+  tasks?: Array<{ task: string; marks?: number }>;
+  marks?: number;
+  topic?: string;
+  difficulty?: string;
+  language?: string;
+  [key: string]: unknown;
 };
 
 export type GenerateResponse = {
   status: string;
   request: GenerateRequest & { count: number; difficulty: string; language: string };
-  items: unknown[];
+  items: GeneratedQuestionItem[];
   message: string;
+};
+
+export type AIHistoryEntry = {
+  id: number;
+  question_type: string;
+  subject: string;
+  chapter: string;
+  topic: string;
+  difficulty: string;
+  language: string;
+  status: string;
+  created_at: string;
+};
+
+export type AIInsight = {
+  title: string;
+  text: string;
+};
+
+export type AIAnalyticsSummary = {
+  status: string;
+  summary: {
+    total_generations: number;
+    latest_topic: string;
+    preferred_language: string;
+    latest_question_type: string;
+  };
+  insights: AIInsight[];
 };
 
 export class ApiError extends Error {
@@ -274,4 +320,16 @@ export function generateQuestions(input: GenerateRequest): Promise<GenerateRespo
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
+}
+
+export function getAIGenerationHistory(): Promise<AIHistoryEntry[]> {
+  return request<AIHistoryEntry[]>('/api/ai/history');
+}
+
+export function getAIInsights(): Promise<AIAnalyticsSummary> {
+  return request<AIAnalyticsSummary>('/api/ai/insights');
+}
+
+export function getAIRecommendations(): Promise<{ status: string; items: { topic: string; type: string; recommendation: string }[] }> {
+  return request<{ status: string; items: { topic: string; type: string; recommendation: string }[] }>('/api/ai/recommendations');
 }

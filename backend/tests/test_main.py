@@ -16,6 +16,10 @@ def valid_generation_request() -> dict[str, object]:
     }
 
 
+def auth_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_health_returns_ok() -> None:
     response = client.get("/health")
 
@@ -23,13 +27,20 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_generate_returns_request_and_pending_status() -> None:
-    response = client.post("/api/ai/generate", json=valid_generation_request())
+def test_generate_returns_valid_ai_payload(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client_with_auth, tokens = auth_client
+    response = client_with_auth.post(
+        "/api/ai/generate",
+        headers=auth_headers(tokens["teacher"]),
+        json=valid_generation_request(),
+    )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "queued"
-    assert response.json()["request"]["count"] == 10
-    assert response.json()["items"] == []
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["request"]["count"] == 10
+    assert len(payload["items"]) == 10
+    assert payload["items"][0]["question"]
 
 
 def test_curriculum_catalog_returns_database_records(catalog_client: TestClient) -> None:
@@ -77,39 +88,47 @@ def test_known_grade_without_subjects_returns_empty_list(catalog_client: TestCli
     assert response.json() == {"items": []}
 
 
-def test_generate_accepts_count_boundaries() -> None:
+def test_generate_accepts_count_boundaries(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client_with_auth, tokens = auth_client
     for count in (1, 50):
-        response = client.post(
+        response = client_with_auth.post(
             "/api/ai/generate",
+            headers=auth_headers(tokens["teacher"]),
             json={**valid_generation_request(), "count": count},
         )
 
         assert response.status_code == 200
 
 
-def test_generate_rejects_count_outside_bounds() -> None:
+def test_generate_rejects_count_outside_bounds(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client_with_auth, tokens = auth_client
     for count in (0, -5, 51, 100000):
-        response = client.post(
+        response = client_with_auth.post(
             "/api/ai/generate",
+            headers=auth_headers(tokens["teacher"]),
             json={**valid_generation_request(), "count": count},
         )
 
         assert response.status_code == 422
 
 
-def test_generate_rejects_blank_fields() -> None:
+def test_generate_rejects_blank_fields(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client_with_auth, tokens = auth_client
     for field in ("curriculum", "subject", "book", "chapter", "topic"):
-        response = client.post(
+        response = client_with_auth.post(
             "/api/ai/generate",
+            headers=auth_headers(tokens["teacher"]),
             json={**valid_generation_request(), field: "   "},
         )
 
         assert response.status_code == 422
 
 
-def test_generate_rejects_fields_over_max_length() -> None:
-    response = client.post(
+def test_generate_rejects_fields_over_max_length(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client_with_auth, tokens = auth_client
+    response = client_with_auth.post(
         "/api/ai/generate",
+        headers=auth_headers(tokens["teacher"]),
         json={**valid_generation_request(), "topic": "t" * 201},
     )
 
