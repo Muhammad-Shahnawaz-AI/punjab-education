@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+import random
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
 from app.models import AIGenerationLog
@@ -19,6 +20,15 @@ class MCQItem(BaseModel):
     difficulty: str = "medium"
     topic: str
     learning_objective: str | None = None
+
+    @model_validator(mode="after")
+    def validate_mcq_options(self) -> "MCQItem":
+        option_values = [str(option).strip() for option in self.options]
+        if len(set(option_values)) != 4:
+            raise ValueError("MCQ options must be unique")
+        if self.correct_answer.strip() not in option_values:
+            raise ValueError("correct_answer must match one of the provided options")
+        return self
 
 
 class SubjectiveItem(BaseModel):
@@ -98,37 +108,57 @@ def _build_prompt(req: dict[str, Any]) -> str:
 
 
 def _generate_mcq_payload(req: dict[str, Any], index: int) -> dict[str, Any]:
-    topic = req["topic"]
-    subject = req["subject"]
+    topic = str(req["topic"]).strip() or "the selected topic"
+    subject = str(req["subject"]).strip() or "the subject"
     difficulty = req.get("difficulty", "medium")
+    question_variants = [
+        f"Which statement best explains {topic} in {subject}?",
+        f"What is the most accurate understanding of {topic} in {subject}?",
+        f"Which option reflects the correct learning goal for {topic}?",
+        f"Which explanation shows the strongest understanding of {topic}?",
+    ]
+    correct_answer = (
+        f"Understanding {topic} requires applying the core idea, chapter context, and subject skills in {subject}."
+    )
+    distractors = [
+        f"{topic} can be memorized without making sense of the chapter or subject concept.",
+        f"{topic} is unrelated to learning goals and classroom application in {subject}.",
+        f"{topic} is best learned by guessing rather than applying a clear principle or example.",
+    ]
+    options = [correct_answer, *distractors]
+    rng = random.Random((index + 1) * 13 + len(topic))
+    rng.shuffle(options)
+
     if req.get("language") == "ur":
+        correct_answer_ur = (
+            f"{topic} کو سمجھنے کے لیے {subject} کے مرکزی خیال، سبق کے سیاق و سباق اور عملی اطلاق کو سمجھنا ضروری ہے۔"
+        )
+        distractors_ur = [
+            f"{topic} کو صرف یاد رکھ کر اور سبق سے الگ ہو کر سیکھا جا سکتا ہے۔",
+            f"{topic} کا تعلق {subject} کے تعلیمی مقاصد سے نہیں ہے۔",
+            f"{topic} کو Guessing کے ذریعے سمجھا جا سکتا ہے بغیر اصول کے۔",
+        ]
+        options_ur = [correct_answer_ur, *distractors_ur]
+        rng_ur = random.Random((index + 1) * 17 + len(subject))
+        rng_ur.shuffle(options_ur)
         return {
-            "question": f"{index + 1}. {topic} کے متعلق درست بیان کیا ہے؟",
-            "options": [
-                f"{subject} میں {topic} کے لیے اصول پر مبنی سمجھ ضروری ہے۔",
-                f"{topic} کو بے ترتیب طریقے سے سیکھا جا سکتا ہے۔",
-                f"{topic} کا تعلق درسی کتاب سے باہر نہیں ہے۔",
-                f"{topic} کی وضاحت معیاری ربط کے بغیر ہوتی ہے۔",
-            ],
-            "correct_answer": f"{subject} میں {topic} کے لیے اصول پر مبنی سمجھ ضروری ہے۔",
-            "explanation": f"یہ سوال {topic} کے مرکزی تصور کو ظاہر کرتا ہے اور اس موضوع کی سچائی کو اساتذہ کے نصاب کے مطابق ثابت کرتا ہے۔",
+            "question": f"{index + 1}. {topic} کے بارے میں سب سے درست بیان کیا ہے؟",
+            "options": options_ur,
+            "correct_answer": correct_answer_ur,
+            "explanation": f"یہ سوال {topic} کے بنیادی تصور، اس کے مقام، اور {subject} میں اس کے اطلاق کو واضح کرتا ہے۔",
             "difficulty": _ur_text(difficulty),
             "topic": topic,
-            "learning_objective": f"{topic} کو {subject} کے تحت سمجھنا اور اس کے بنیادی اصول جاننا۔",
+            "learning_objective": f"{topic} کو {subject} کے تعلیمی مقاصد کے مطابق سمجھنا اور اس کا اطلاق کرنا۔",
         }
+
     return {
-        "question": f"Which statement best explains {topic} in {subject}? (Item {index + 1})",
-        "options": [
-            f"Understanding {topic} requires applying core principles from the {subject} curriculum.",
-            f"{topic} can be learned without any connection to the chapter concept.",
-            f"{topic} is unrelated to learning objectives in {subject}.",
-            f"The correct explanation for {topic} depends only on random recall.",
-        ],
-        "correct_answer": f"Understanding {topic} requires applying core principles from the {subject} curriculum.",
-        "explanation": f"This item reinforces the learning objective for {topic} and checks the key concept within the relevant chapter, book, and curriculum context.",
+        "question": f"{index + 1}. {question_variants[index % len(question_variants)]}",
+        "options": options,
+        "correct_answer": correct_answer,
+        "explanation": f"This item checks that {topic} is understood in the right classroom context and applied through the key concept in {subject}.",
         "difficulty": difficulty,
         "topic": topic,
-        "learning_objective": f"Explain and apply the key ideas behind {topic} within {subject}.",
+        "learning_objective": f"Explain and apply the main idea of {topic} within {subject}.",
     }
 
 
