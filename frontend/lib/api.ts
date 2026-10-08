@@ -380,10 +380,22 @@ export function askAboutBooks(
   bookIds: number[],
   prompt: string,
   language: 'en' | 'ur',
+  imageData?: string | null,
+  subject?: string,
+  intent?: string,
+  grade?: string,
 ): Promise<StudyChatResponse> {
   return request<StudyChatResponse>('/api/study/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ book_ids: bookIds, prompt, language }),
+    body: JSON.stringify({
+      book_ids: bookIds,
+      prompt,
+      language,
+      image_data: imageData ?? null,
+      subject: subject ?? 'General Education',
+      intent: intent ?? 'explain',
+      grade: grade ?? 'General',
+    }),
   });
 }

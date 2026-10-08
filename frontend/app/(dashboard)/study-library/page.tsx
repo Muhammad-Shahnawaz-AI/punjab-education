@@ -36,8 +36,13 @@ export default function StudyLibraryPage() {
   const [messages, setMessages] = useState<StudyMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [language, setLanguage] = useState<'en' | 'ur'>('en');
+  const [selectedSubject, setSelectedSubject] = useState('General Education');
+  const [selectedIntent, setSelectedIntent] = useState('explain');
+  const [selectedGrade, setSelectedGrade] = useState('General');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTitle, setUploadTitle] = useState('');
+  const [imageData, setImageData] = useState<string | null>(null);
+  const [imageName, setImageName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
@@ -89,6 +94,20 @@ export default function StudyLibraryPage() {
     setUploadTitle(file ? file.name.replace(/\.pdf$/i, '') : '');
     setError(null);
     setNotice(null);
+  }
+
+  function handleImageChange(file: File | null) {
+    if (!file) {
+      setImageData(null);
+      setImageName('');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageData(typeof reader.result === 'string' ? reader.result : null);
+      setImageName(file.name);
+    };
+    reader.readAsDataURL(file);
   }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
@@ -170,23 +189,29 @@ export default function StudyLibraryPage() {
   async function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const question = prompt.trim();
-    if (selectedBookIds.length === 0) {
-      setError('Select at least one book before asking a study question.');
-      return;
-    }
     if (!question) return;
 
     setIsAsking(true);
     setError(null);
     setNotice(null);
     try {
-      const response = await askAboutBooks(selectedBookIds, question, language);
+      const response = await askAboutBooks(
+        selectedBookIds,
+        question,
+        language,
+        imageData,
+        selectedSubject,
+        selectedIntent,
+        selectedGrade,
+      );
       setMessages((current) => [
         ...current,
         { role: 'student', content: question },
         { role: 'assistant', content: response.answer, citations: response.citations },
       ]);
       setPrompt('');
+      setImageData(null);
+      setImageName('');
     } catch (askError) {
       setError(askError instanceof Error ? askError.message : 'Study AI could not answer right now.');
     } finally {
@@ -286,8 +311,8 @@ export default function StudyLibraryPage() {
                 <LoaderCircle size={15} className="animate-spin" /> Loading your books…
               </p>
             ) : books.length === 0 ? (
-              <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                Your library is empty. Add a text-based PDF to start asking questions about it.
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                No books have been added to the portal yet. The admin has not uploaded any books here yet, and the AI can only answer education-related questions and general learning support for this platform.
               </div>
             ) : (
               <ul className="mt-5 space-y-3">
@@ -354,10 +379,11 @@ export default function StudyLibraryPage() {
             {messages.length === 0 ? (
               <div className="m-auto max-w-sm text-center">
                 <BookOpenCheck className="mx-auto text-slate-400" size={28} />
-                <p className="mt-3 font-semibold text-slate-800">Your study chat starts here</p>
+                <p className="mt-3 font-semibold text-slate-800">Education assistant</p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Select one or more books, then ask for explanations, summaries, practice, or help
-                  understanding a concept.
+                  {books.length === 0
+                    ? 'No books have been added by the admin yet. You can still ask education-related questions about the platform, learning topics, or school subjects.'
+                    : 'Select one or more books, then ask for explanations, summaries, practice, or help understanding a concept.'}
                 </p>
               </div>
             ) : (
@@ -383,20 +409,80 @@ export default function StudyLibraryPage() {
           </div>
 
           <form onSubmit={(event) => void handleAsk(event)} className="border-t border-slate-100 p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium text-slate-600">
+                Subject
+                <select
+                  value={selectedSubject}
+                  onChange={(event) => setSelectedSubject(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="General Education">General Education</option>
+                  <option value="Mathematics">Mathematics</option>
+                  <option value="Science">Science</option>
+                  <option value="English">English</option>
+                  <option value="Computer Science">Computer Science</option>
+                  <option value="Social Studies">Social Studies</option>
+                </select>
+              </label>
+
+              <label className="text-xs font-medium text-slate-600">
+                Task type
+                <select
+                  value={selectedIntent}
+                  onChange={(event) => setSelectedIntent(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="explain">Explain concept</option>
+                  <option value="summary">Summarize chapter</option>
+                  <option value="quiz">Practice questions</option>
+                  <option value="solve">Solve problem</option>
+                </select>
+              </label>
+
+              <label className="text-xs font-medium text-slate-600">
+                Grade / class
+                <select
+                  value={selectedGrade}
+                  onChange={(event) => setSelectedGrade(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="General">General</option>
+                  <option value="Grade 6">Grade 6</option>
+                  <option value="Grade 7">Grade 7</option>
+                  <option value="Grade 8">Grade 8</option>
+                  <option value="Grade 9">Grade 9</option>
+                  <option value="Grade 10">Grade 10</option>
+                  <option value="Grade 11">Grade 11</option>
+                  <option value="Grade 12">Grade 12</option>
+                </select>
+              </label>
+
               <label className="text-xs font-medium text-slate-600" htmlFor="study-language">
                 Answer language
+                <select
+                  id="study-language"
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value as 'en' | 'ur')}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="en">English</option>
+                  <option value="ur">Urdu</option>
+                </select>
               </label>
-              <select
-                id="study-language"
-                value={language}
-                onChange={(event) => setLanguage(event.target.value as 'en' | 'ur')}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm"
-              >
-                <option value="en">English</option>
-                <option value="ur">Urdu</option>
-              </select>
             </div>
+
+            <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <FileUp size={15} />
+              <span>{imageName ? imageName : 'Attach an image (optional)'}</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => handleImageChange(event.currentTarget.files?.[0] ?? null)}
+                className="hidden"
+              />
+            </label>
+
             <label className="sr-only" htmlFor="study-prompt">Your study question</label>
             <textarea
               id="study-prompt"
@@ -405,16 +491,16 @@ export default function StudyLibraryPage() {
               maxLength={2000}
               rows={3}
               dir={language === 'ur' ? 'rtl' : 'auto'}
-              placeholder="Ask for an explanation, a chapter summary, practice questions, or help with a concept…"
+              placeholder="Write the learning question here…"
               className="w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-slate-400"
             />
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-xs text-slate-500">
-                {selectedBookIds.length ? `${selectedBookIds.length} book${selectedBookIds.length === 1 ? '' : 's'} selected` : 'Select books from your library first.'}
+                {selectedBookIds.length ? `${selectedBookIds.length} book${selectedBookIds.length === 1 ? '' : 's'} selected` : 'No books added by admin yet; platform-only educational help is available.'}
               </p>
               <button
                 type="submit"
-                disabled={isAsking || selectedBookIds.length === 0 || !prompt.trim()}
+                disabled={isAsking || !prompt.trim()}
                 className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isAsking ? <LoaderCircle size={15} className="animate-spin" /> : <Send size={15} />}

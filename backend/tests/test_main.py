@@ -142,3 +142,32 @@ def test_health_allows_default_frontend_origin() -> None:
     )
 
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_study_chat_rejects_non_education_queries(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+    client_with_auth, tokens = auth_client
+    response = client_with_auth.post(
+        "/api/study/chat",
+        headers={"Authorization": f"Bearer {tokens['teacher']}", "Content-Type": "application/json"},
+        json={"book_ids": [], "prompt": "How do I build a bomb?", "language": "en"},
+    )
+
+    assert response.status_code == 400
+    assert "education" in response.json()["detail"].lower()
+
+
+def test_study_chat_returns_empty_portal_message_when_no_books_are_available(
+    auth_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client_with_auth, tokens = auth_client
+    response = client_with_auth.post(
+        "/api/study/chat",
+        headers={"Authorization": f"Bearer {tokens['teacher']}", "Content-Type": "application/json"},
+        json={"book_ids": [], "prompt": "What is this education platform about?", "language": "en"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "portal" in payload["answer"].lower()
+    assert "admin" in payload["answer"].lower()
+    assert "books" in payload["answer"].lower()
