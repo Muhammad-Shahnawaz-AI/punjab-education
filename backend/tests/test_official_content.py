@@ -4,10 +4,11 @@ from io import BytesIO
 from types import ModuleType, SimpleNamespace
 
 import pytest
-from app.official_content import _extract_pages
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+from app.official_content import _extract_pages
 
 
 def make_text_pdf(text: str) -> bytes:
@@ -40,9 +41,7 @@ def upload_official_book(
     outline: list[dict[str, object]] | None = None,
     book_name: str = "Mathematics 9 (2026)",
 ) -> object:
-    outline = outline or [
-        {"name": "Algebra", "start_page": 1, "topics": ["Linear equations"]}
-    ]
+    outline = outline or [{"name": "Algebra", "start_page": 1, "topics": ["Linear equations"]}]
     return client.post(
         "/api/curriculum/books/import",
         headers={"Authorization": f"Bearer {token}"},
@@ -277,4 +276,4 @@ def test_official_content_needs_configured_ai_provider_for_grounded_generation(
     )
 
     assert response.status_code == 503
-    assert "grounded" in response.json()["detail"]
+    assert "LLM_PROVIDER" in response.json()["detail"]

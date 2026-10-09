@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ai_service import generate_ai_bundle, persist_generation_log
@@ -26,7 +26,7 @@ from app.models import (
     User,
 )
 from app.official_content import router as official_content_router
-from app.security import require_teacher
+from app.security import get_optional_user, require_teacher
 from app.study_chat import router as study_chat_router
 
 app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0")
@@ -83,9 +83,129 @@ class AIHistoryItem(BaseModel):
     created_at: str
 
 
+class DashboardSubject(BaseModel):
+    name: str
+    books: int
+    chapters: int
+    topics: int
+
+
+class DashboardGeneration(BaseModel):
+    subject: str
+    chapter: str
+    topic: str
+    created_at: str
+
+
+class DashboardOverview(BaseModel):
+    curricula: int
+    grades: int
+    subjects: int
+    books: int
+    approved_books: int
+    chapters: int
+    topics: int
+    subject_catalog: list[DashboardSubject]
+    recent_generations: list[DashboardGeneration]
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/dashboard/overview", response_model=DashboardOverview)
+def dashboard_overview(
+    user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+) -> DashboardOverview:
+    real_curricula = Curriculum.is_sample.is_(False)
+    curriculum_ids = select(Curriculum.id).where(real_curricula)
+    grade_ids = select(Grade.id).where(Grade.curriculum_id.in_(curriculum_ids))
+    subject_ids = select(Subject.id).where(Subject.grade_id.in_(grade_ids))
+    book_ids = select(Book.id).where(Book.subject_id.in_(subject_ids))
+    chapter_ids = select(Chapter.id).where(Chapter.book_id.in_(book_ids))
+
+    curriculum_count = (
+        db.scalar(select(func.count()).select_from(Curriculum).where(real_curricula)) or 0
+    )
+    grade_count = (
+        db.scalar(select(func.count()).select_from(Grade).where(Grade.id.in_(grade_ids))) or 0
+    )
+    subject_count = (
+        db.scalar(select(func.count()).select_from(Subject).where(Subject.id.in_(subject_ids))) or 0
+    )
+    book_count = db.scalar(select(func.count()).select_from(Book).where(Book.id.in_(book_ids))) or 0
+    approved_book_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(OfficialBookSource)
+            .where(OfficialBookSource.book_id.in_(book_ids))
+        )
+        or 0
+    )
+    chapter_count = (
+        db.scalar(select(func.count()).select_from(Chapter).where(Chapter.id.in_(chapter_ids))) or 0
+    )
+    topic_count = (
+        db.scalar(select(func.count()).select_from(Topic).where(Topic.chapter_id.in_(chapter_ids)))
+        or 0
+    )
+
+    subject_rows = db.execute(
+        select(
+            Subject.name,
+            func.count(func.distinct(Book.id)),
+            func.count(func.distinct(Chapter.id)),
+            func.count(func.distinct(Topic.id)),
+        )
+        .join(Grade, Grade.id == Subject.grade_id)
+        .join(Curriculum, Curriculum.id == Grade.curriculum_id)
+        .outerjoin(Book, Book.subject_id == Subject.id)
+        .outerjoin(Chapter, Chapter.book_id == Book.id)
+        .outerjoin(Topic, Topic.chapter_id == Chapter.id)
+        .where(Curriculum.is_sample.is_(False))
+        .group_by(Subject.name)
+        .order_by(Subject.name)
+        .limit(8)
+    ).all()
+
+    generation_query = select(AIGenerationLog).order_by(AIGenerationLog.created_at.desc())
+    if user is None or user.role == "student":
+        recent_generations = []
+    else:
+        logs = db.scalars(
+            generation_query.where(AIGenerationLog.created_by_id == user.id).limit(5)
+        ).all()
+        recent_generations = [
+            DashboardGeneration(
+                subject=log.subject,
+                chapter=log.chapter,
+                topic=log.topic,
+                created_at=log.created_at.isoformat(),
+            )
+            for log in logs
+        ]
+
+    return DashboardOverview(
+        curricula=curriculum_count,
+        grades=grade_count,
+        subjects=subject_count,
+        books=book_count,
+        approved_books=approved_book_count,
+        chapters=chapter_count,
+        topics=topic_count,
+        subject_catalog=[
+            DashboardSubject(
+                name=name,
+                books=books,
+                chapters=chapters,
+                topics=topics,
+            )
+            for name, books, chapters, topics in subject_rows
+        ],
+        recent_generations=recent_generations,
+    )
 
 
 @app.post("/api/ai/generate")
@@ -96,69 +216,91 @@ def generate(
 ):
     request_data = req.model_dump()
     filters = [
-        Book.name.ilike(req.book),
-        Subject.name.ilike(req.subject),
-        Curriculum.name.ilike(req.curriculum),
+        func.lower(Book.name) == req.book.casefold(),
+        func.lower(Subject.name) == req.subject.casefold(),
+        func.lower(Curriculum.name) == req.curriculum.casefold(),
     ]
     grade_match = re.search(r"\d+", req.grade or "")
     if grade_match:
         filters.append(Grade.level == int(grade_match.group()))
-    matching_book = db.scalar(
+    matching_books = db.scalars(
         select(Book)
         .join(Subject, Subject.id == Book.subject_id)
         .join(Grade, Grade.id == Subject.grade_id)
         .join(Curriculum, Curriculum.id == Grade.curriculum_id)
         .where(*filters)
-    )
-    source_excerpts: list[dict[str, object]] = []
-    if matching_book is not None:
-        source = db.scalar(
-            select(OfficialBookSource).where(OfficialBookSource.book_id == matching_book.id)
+        .limit(2)
+    ).all()
+    if not matching_books:
+        raise HTTPException(
+            status_code=422,
+            detail="Question generation requires a book in the approved curriculum catalog.",
         )
-        if source is not None:
-            chapter = db.scalar(
-                select(Chapter).where(
-                    Chapter.book_id == matching_book.id,
-                    Chapter.name.ilike(req.chapter),
-                )
-            )
-            if chapter is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Chapter '{req.chapter}' was not found in the selected approved book.",
-                )
-            if chapter is not None:
-                topic = db.scalar(
-                    select(Topic).where(
-                        Topic.chapter_id == chapter.id,
-                        Topic.name.ilike(req.topic),
-                    )
-                )
-                chunks_query = select(OfficialBookChunk).where(
-                    OfficialBookChunk.source_id == source.id,
-                    OfficialBookChunk.chapter_id == chapter.id,
-                )
-                topic_chunks = []
-                if topic is not None:
-                    topic_chunks = db.scalars(
-                        chunks_query.where(OfficialBookChunk.content.ilike(f"%{req.topic}%"))
-                        .order_by(OfficialBookChunk.page_number)
-                        .limit(5)
-                    ).all()
-                chunks = topic_chunks or db.scalars(
-                    chunks_query.order_by(OfficialBookChunk.page_number).limit(5)
-                ).all()
-                source_excerpts = [
-                    {
-                        "book": matching_book.name,
-                        "chapter": chapter.name,
-                        "page": chunk.page_number,
-                        "text": chunk.content,
-                        "source_name": source.source_name,
-                        "source_url": source.source_url,
-                    }
-                    for chunk in chunks
-                ]
+    if len(matching_books) > 1:
+        raise HTTPException(
+            status_code=422,
+            detail="Specify the grade to select the correct approved textbook.",
+        )
+    matching_book = matching_books[0]
+    source = db.scalar(
+        select(OfficialBookSource).where(OfficialBookSource.book_id == matching_book.id)
+    )
+    if source is None:
+        raise HTTPException(
+            status_code=422,
+            detail="The selected book has no approved textbook PDF indexed yet.",
+        )
+    chapter = db.scalar(
+        select(Chapter).where(
+            Chapter.book_id == matching_book.id,
+            func.lower(Chapter.name) == req.chapter.casefold(),
+        )
+    )
+    if chapter is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Chapter '{req.chapter}' was not found in the selected approved book.",
+        )
+    topic = db.scalar(
+        select(Topic).where(
+            Topic.chapter_id == chapter.id,
+            func.lower(Topic.name) == req.topic.casefold(),
+        )
+    )
+    if topic is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Topic '{req.topic}' was not mapped to the selected approved chapter.",
+        )
+    chunks = db.scalars(
+        select(OfficialBookChunk)
+        .where(
+            OfficialBookChunk.source_id == source.id,
+            OfficialBookChunk.chapter_id == chapter.id,
+            or_(
+                OfficialBookChunk.topic_id == topic.id,
+                OfficialBookChunk.content.ilike(f"%{req.topic}%"),
+            ),
+        )
+        .order_by(OfficialBookChunk.page_number)
+        .limit(5)
+    ).all()
+    if not chunks:
+        raise HTTPException(
+            status_code=422,
+            detail="No indexed textbook excerpts were found for the selected topic.",
+        )
+    source_excerpts: list[dict[str, object]] = [
+        {
+            "book": matching_book.name,
+            "chapter": chapter.name,
+            "page": chunk.page_number,
+            "text": chunk.content,
+            "source_name": source.source_name,
+            "source_url": source.source_url,
+        }
+        for chunk in chunks
+    ]
     payload = generate_ai_bundle(request_data, source_excerpts=source_excerpts)
     persist_generation_log(db, user.id, req.model_dump(), payload)
     return payload
@@ -244,4 +386,14 @@ def recommendations(
                 "recommendation": f"Create a follow-up {log.question_type} set for {log.topic} using {log.difficulty} difficulty and {log.language} language.",
             }
         )
-    return {"status": "ok", "items": recommendations_list or [{"topic": "General practice", "type": "mcq", "recommendation": "Review chapter concepts and generate a mixed practice set to reinforce mastery."}]}
+    return {
+        "status": "ok",
+        "items": recommendations_list
+        or [
+            {
+                "topic": "General practice",
+                "type": "mcq",
+                "recommendation": "Review chapter concepts and generate a mixed practice set to reinforce mastery.",
+            }
+        ],
+    }

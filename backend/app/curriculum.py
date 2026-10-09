@@ -31,7 +31,9 @@ class CatalogList(BaseModel):
 
 @router.get("/curriculum", response_model=CurriculumList)
 def list_curricula(db: Session = Depends(get_db)) -> CurriculumList:
-    curricula = db.scalars(select(Curriculum).order_by(Curriculum.name)).all()
+    curricula = db.scalars(
+        select(Curriculum).where(Curriculum.is_sample.is_(False)).order_by(Curriculum.name)
+    ).all()
     return CurriculumList(
         curricula=[
             CurriculumItem(

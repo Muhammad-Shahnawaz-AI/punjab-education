@@ -33,18 +33,24 @@ def catalog_client() -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db] = override_get_db
     with testing_sessions.begin() as db:
         curriculum = Curriculum(
-            code="sample-fixture",
+            code="punjab-fixture",
+            name="Punjab Board Test Fixture",
+            description="Isolated test fixture; never used as production curriculum.",
+            is_sample=False,
+        )
+        sample_curriculum = Curriculum(
+            code="sample-placeholder",
             name="Sample Curriculum",
             description="Sample data only.",
             is_sample=True,
         )
         grade_nine = Grade(level=9, curriculum=curriculum)
         Grade(level=10, curriculum=curriculum)
-        subject = Subject(name="Sample Subject", grade=grade_nine)
-        book = Book(name="Sample Book", subject=subject)
-        chapter = Chapter(name="Sample Chapter", position=1, book=book)
-        Topic(name="Sample Topic", chapter=chapter)
-        db.add(curriculum)
+        subject = Subject(name="Mathematics", grade=grade_nine)
+        book = Book(name="Mathematics 9", subject=subject)
+        chapter = Chapter(name="Number Systems", position=1, book=book)
+        Topic(name="Integers", chapter=chapter)
+        db.add_all([curriculum, sample_curriculum])
 
     try:
         with TestClient(app) as client:

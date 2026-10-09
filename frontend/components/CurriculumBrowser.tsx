@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery } from "@tanstack/react-query";
+import { ExternalLink } from "lucide-react";
+import { useState } from "react";
 import {
   getBooks,
   getChapters,
@@ -10,68 +11,96 @@ import {
   getSubjects,
   getTopics,
   type CatalogItem,
-} from '../lib/api';
+} from "../lib/api";
 
 export function CurriculumBrowser() {
-  const [curriculumCode, setCurriculumCode] = useState('');
-  const [gradeId, setGradeId] = useState<number | ''>('');
-  const [subjectId, setSubjectId] = useState<number | ''>('');
-  const [bookId, setBookId] = useState<number | ''>('');
-  const [chapterId, setChapterId] = useState<number | ''>('');
-  const [topicId, setTopicId] = useState<number | ''>('');
+  const [curriculumCode, setCurriculumCode] = useState("");
+  const [gradeId, setGradeId] = useState<number | "">("");
+  const [subjectId, setSubjectId] = useState<number | "">("");
+  const [bookId, setBookId] = useState<number | "">("");
+  const [chapterId, setChapterId] = useState<number | "">("");
+  const [topicId, setTopicId] = useState<number | "">("");
 
-  const curriculaQuery = useQuery({ queryKey: ['curricula'], queryFn: getCurricula });
+  const curriculaQuery = useQuery({
+    queryKey: ["curricula"],
+    queryFn: getCurricula,
+  });
   const gradesQuery = useQuery({
-    queryKey: ['grades', curriculumCode],
+    queryKey: ["grades", curriculumCode],
     queryFn: () => getGrades(curriculumCode),
-    enabled: curriculumCode !== '',
+    enabled: curriculumCode !== "",
   });
   const subjectsQuery = useQuery({
-    queryKey: ['subjects', gradeId],
+    queryKey: ["subjects", gradeId],
     queryFn: () => getSubjects(gradeId as number),
-    enabled: gradeId !== '',
+    enabled: gradeId !== "",
   });
   const booksQuery = useQuery({
-    queryKey: ['books', subjectId],
+    queryKey: ["books", subjectId],
     queryFn: () => getBooks(subjectId as number),
-    enabled: subjectId !== '',
+    enabled: subjectId !== "",
   });
   const chaptersQuery = useQuery({
-    queryKey: ['chapters', bookId],
+    queryKey: ["chapters", bookId],
     queryFn: () => getChapters(bookId as number),
-    enabled: bookId !== '',
+    enabled: bookId !== "",
   });
   const topicsQuery = useQuery({
-    queryKey: ['topics', chapterId],
+    queryKey: ["topics", chapterId],
     queryFn: () => getTopics(chapterId as number),
-    enabled: chapterId !== '',
+    enabled: chapterId !== "",
   });
 
-  const curricula = curriculaQuery.data?.curricula ?? [];
+  const curricula =
+    curriculaQuery.data?.curricula.filter(
+      (curriculum) => !curriculum.is_sample,
+    ) ?? [];
 
   return (
     <section className="mx-auto max-w-7xl p-5 lg:p-9">
       <div className="rounded-[28px] bg-white p-6 shadow-[0_18px_45px_rgba(30,39,70,.09)] lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-slate-500">Curriculum library</p>
-            <h1 className="mt-2 text-2xl font-bold">Browse learning material</h1>
+            <p className="text-sm font-semibold text-slate-500">
+              Curriculum library
+            </p>
+            <h1 className="mt-2 text-2xl font-bold">
+              Browse learning material
+            </h1>
             <p className="mt-2 text-slate-600">
               Select each level to explore the available catalog.
             </p>
           </div>
         </div>
 
-        {curricula.filter((curriculum) => curriculum.is_sample).map((curriculum) => (
-          <p key={curriculum.id} className="mt-5 rounded-2xl bg-[var(--yellow)] p-4 text-sm">
-            <strong>Sample placeholder:</strong> {curriculum.description} Replace this dataset with
-            approved source material before using it for instruction.
-          </p>
-        ))}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <h2 className="font-semibold">More PCTB e-books</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Browse the full e-book directory maintained by Literaria Education
+              Foundation. Books open at their linked source and are not hosted
+              by this project.
+            </p>
+          </div>
+          <a
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2"
+            href="https://literaria.edu.pk/pctb-e-books/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Browse PCTB e-books <ExternalLink size={16} aria-hidden="true" />
+          </a>
+        </div>
 
         {curriculaQuery.isError && (
           <QueryError onRetry={() => void curriculaQuery.refetch()} />
         )}
+        {!curriculaQuery.isLoading && !curriculaQuery.isError && curricula.length === 0 ? (
+          <p className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900" role="status">
+            No approved curriculum data is loaded yet. Import a textbook only after confirming its
+            publisher permits storage and processing.
+          </p>
+        ) : null}
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Selector
             label="Curriculum"
@@ -81,11 +110,11 @@ export function CurriculumBrowser() {
             enabled
             onChange={(value) => {
               setCurriculumCode(String(value));
-              setGradeId('');
-              setSubjectId('');
-              setBookId('');
-              setChapterId('');
-              setTopicId('');
+              setGradeId("");
+              setSubjectId("");
+              setBookId("");
+              setChapterId("");
+              setTopicId("");
             }}
             onRetry={() => void curriculaQuery.refetch()}
             error={curriculaQuery.isError}
@@ -95,13 +124,13 @@ export function CurriculumBrowser() {
             value={gradeId}
             options={gradesQuery.data?.items ?? []}
             loading={gradesQuery.isLoading}
-            enabled={curriculumCode !== ''}
+            enabled={curriculumCode !== ""}
             onChange={(value) => {
               setGradeId(Number(value));
-              setSubjectId('');
-              setBookId('');
-              setChapterId('');
-              setTopicId('');
+              setSubjectId("");
+              setBookId("");
+              setChapterId("");
+              setTopicId("");
             }}
             onRetry={() => void gradesQuery.refetch()}
             error={gradesQuery.isError}
@@ -111,12 +140,12 @@ export function CurriculumBrowser() {
             value={subjectId}
             options={subjectsQuery.data?.items ?? []}
             loading={subjectsQuery.isLoading}
-            enabled={gradeId !== ''}
+            enabled={gradeId !== ""}
             onChange={(value) => {
               setSubjectId(Number(value));
-              setBookId('');
-              setChapterId('');
-              setTopicId('');
+              setBookId("");
+              setChapterId("");
+              setTopicId("");
             }}
             onRetry={() => void subjectsQuery.refetch()}
             error={subjectsQuery.isError}
@@ -126,11 +155,11 @@ export function CurriculumBrowser() {
             value={bookId}
             options={booksQuery.data?.items ?? []}
             loading={booksQuery.isLoading}
-            enabled={subjectId !== ''}
+            enabled={subjectId !== ""}
             onChange={(value) => {
               setBookId(Number(value));
-              setChapterId('');
-              setTopicId('');
+              setChapterId("");
+              setTopicId("");
             }}
             onRetry={() => void booksQuery.refetch()}
             error={booksQuery.isError}
@@ -140,10 +169,10 @@ export function CurriculumBrowser() {
             value={chapterId}
             options={chaptersQuery.data?.items ?? []}
             loading={chaptersQuery.isLoading}
-            enabled={bookId !== ''}
+            enabled={bookId !== ""}
             onChange={(value) => {
               setChapterId(Number(value));
-              setTopicId('');
+              setTopicId("");
             }}
             onRetry={() => void chaptersQuery.refetch()}
             error={chaptersQuery.isError}
@@ -153,15 +182,19 @@ export function CurriculumBrowser() {
             value={topicId}
             options={topicsQuery.data?.items ?? []}
             loading={topicsQuery.isLoading}
-            enabled={chapterId !== ''}
+            enabled={chapterId !== ""}
             onChange={(value) => setTopicId(Number(value))}
             onRetry={() => void topicsQuery.refetch()}
             error={topicsQuery.isError}
           />
         </div>
-        {topicId !== '' && (
-          <p className="mt-5 text-sm font-semibold text-slate-600" role="status">
-            Topic selected. Approved source material is required before generating questions.
+        {topicId !== "" && (
+          <p
+            className="mt-5 text-sm font-semibold text-slate-600"
+            role="status"
+          >
+            Topic selected. Approved source material is required before
+            generating questions.
           </p>
         )}
       </div>
@@ -192,7 +225,10 @@ function Selector({
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-semibold" htmlFor={`curriculum-${label.toLowerCase()}`}>
+      <label
+        className="block text-sm font-semibold"
+        htmlFor={`curriculum-${label.toLowerCase()}`}
+      >
         {label}
       </label>
       <select
@@ -210,10 +246,16 @@ function Selector({
           </option>
         ))}
       </select>
-      {loading && <p className="text-xs text-slate-500" role="status">Loading {label.toLowerCase()}...</p>}
+      {loading && (
+        <p className="text-xs text-slate-500" role="status">
+          Loading {label.toLowerCase()}...
+        </p>
+      )}
       {error && <QueryError onRetry={onRetry} />}
       {enabled && !loading && !error && !optionsAvailable && (
-        <p className="text-xs text-slate-500">No {label.toLowerCase()} available.</p>
+        <p className="text-xs text-slate-500">
+          No {label.toLowerCase()} available.
+        </p>
       )}
     </div>
   );
@@ -222,7 +264,10 @@ function Selector({
 function QueryError({ onRetry }: { onRetry: () => void }) {
   return (
     <p className="text-sm text-red-700" role="alert">
-      Could not load this catalog. <button className="font-semibold underline" onClick={onRetry}>Retry</button>
+      Could not load this catalog.{" "}
+      <button className="font-semibold underline" onClick={onRetry}>
+        Retry
+      </button>
     </p>
   );
 }

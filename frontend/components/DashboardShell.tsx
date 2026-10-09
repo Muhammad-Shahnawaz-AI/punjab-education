@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   BarChart3,
@@ -15,21 +15,21 @@ import {
   Sparkles,
   Users,
   X,
-} from 'lucide-react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
-import type { AuthUser } from '../lib/api';
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState, type ReactNode } from "react";
+import type { AuthUser } from "../lib/api";
 
 const navigation = [
-  { label: 'Overview', href: '/', icon: LayoutDashboard },
-  { label: 'Curriculum', href: '/curriculum', icon: BookOpen },
-  { label: 'My Study Books', href: '/study-library', icon: BookMarked },
-  { label: 'AI Generator', href: '/ai-generator', icon: Sparkles },
-  { label: 'Assessments', href: '/assessments', icon: ClipboardCheck },
-  { label: 'Students', href: '/students', icon: Users },
-  { label: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { label: 'User Management', href: '/admin/users', icon: ShieldCheck },
+  { label: "Overview", href: "/", icon: LayoutDashboard },
+  { label: "Curriculum", href: "/curriculum", icon: BookOpen },
+  { label: "My Study Books", href: "/study-library", icon: BookMarked },
+  { label: "AI Generator", href: "/ai-generator", icon: Sparkles },
+  { label: "Assessments", href: "/assessments", icon: ClipboardCheck },
+  { label: "Students", href: "/students", icon: Users },
+  { label: "Analytics", href: "/analytics", icon: BarChart3 },
+  { label: "User Management", href: "/admin/users", icon: ShieldCheck },
 ];
 
 export function DashboardShell({
@@ -47,16 +47,22 @@ export function DashboardShell({
   return (
     <div className="min-h-screen lg:flex">
       <aside
-        className={`${menuOpen ? 'fixed inset-0 z-50 flex' : 'hidden'} w-full flex-col border-r border-slate-100 bg-white p-5 lg:static lg:flex lg:w-64`}
+        className={`${menuOpen ? "fixed inset-0 z-50 flex" : "hidden"} w-full flex-col border-r border-slate-100 bg-white p-5 lg:static lg:flex lg:w-64`}
       >
         <div className="mb-10 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3" onClick={() => setMenuOpen(false)}>
+          <Link
+            href="/"
+            className="flex items-center gap-3"
+            onClick={() => setMenuOpen(false)}
+          >
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--lav)]">
               <GraduationCap size={22} />
             </span>
             <span>
               <span className="block font-bold">Punjab Edu</span>
-              <span className="block text-xs text-slate-400">Intelligence Platform</span>
+              <span className="block text-xs text-slate-400">
+                Intelligence Platform
+              </span>
             </span>
           </Link>
           <button
@@ -73,31 +79,37 @@ export function DashboardShell({
         <nav aria-label="Main navigation" className="space-y-1">
           {navigation
             .filter(({ href }) => {
-              if (href === '/admin/users') return user.role === 'admin';
-              if (user.role === 'student') {
-                return ['/', '/curriculum', '/assessments', '/study-library'].includes(href);
+              if (href === "/admin/users") return user.role === "admin";
+              if (user.role === "student") {
+                return [
+                  "/",
+                  "/curriculum",
+                  "/assessments",
+                  "/study-library",
+                ].includes(href);
               }
-              return href !== '/admin/users';
+              return href !== "/admin/users";
             })
             .map(({ label, href, icon: Icon }) => (
-            <Link
-              key={href}
-              aria-current={pathname === href ? 'page' : undefined}
-              href={href}
-              onClick={() => setMenuOpen(false)}
-              className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm transition ${pathname === href ? 'bg-[var(--lav)] font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
-            >
-              <Icon size={18} />
-              {label}
-              <ChevronRight className="ml-auto" size={15} />
-            </Link>
+              <Link
+                key={href}
+                aria-current={pathname === href ? "page" : undefined}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm transition ${pathname === href ? "bg-[var(--lav)] font-semibold" : "text-slate-500 hover:bg-slate-50"}`}
+              >
+                <Icon size={18} />
+                {label}
+                <ChevronRight className="ml-auto" size={15} />
+              </Link>
             ))}
         </nav>
-        {user.role !== 'student' && (
+        {user.role !== "student" && (
           <div className="mt-auto rounded-3xl bg-[var(--yellow)] p-4">
-            <div className="text-sm font-semibold">AI content ready</div>
+            <div className="text-sm font-semibold">Teacher tools</div>
             <p className="mt-1 text-xs text-slate-600">
-              Generate curriculum-aligned questions in seconds.
+              Question generation needs a configured AI provider and approved
+              source material.
             </p>
             <Link
               href="/ai-generator"
@@ -134,7 +146,8 @@ export function DashboardShell({
             className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2"
             onClick={() => void onLogout()}
           >
-            <LogOut size={18} /> <span className="hidden sm:inline">Sign out</span>
+            <LogOut size={18} />{" "}
+            <span className="hidden sm:inline">Sign out</span>
           </button>
         </header>
         {children}

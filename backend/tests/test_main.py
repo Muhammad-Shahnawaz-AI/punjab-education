@@ -27,7 +27,9 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_generate_returns_valid_ai_payload(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+def test_generate_requires_book_in_approved_catalog(
+    auth_client: tuple[TestClient, dict[str, str]],
+) -> None:
     client_with_auth, tokens = auth_client
     response = client_with_auth.post(
         "/api/ai/generate",
@@ -35,12 +37,8 @@ def test_generate_returns_valid_ai_payload(auth_client: tuple[TestClient, dict[s
         json=valid_generation_request(),
     )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "ok"
-    assert payload["request"]["count"] == 10
-    assert len(payload["items"]) == 10
-    assert payload["items"][0]["question"]
+    assert response.status_code == 422
+    assert "approved curriculum catalog" in response.json()["detail"]
 
 
 def test_curriculum_catalog_returns_database_records(catalog_client: TestClient) -> None:
@@ -49,10 +47,10 @@ def test_curriculum_catalog_returns_database_records(catalog_client: TestClient)
     assert response.status_code == 200
     assert response.json()["curricula"] == [
         {
-            "id": "sample-fixture",
-            "name": "Sample Curriculum",
-            "description": "Sample data only.",
-            "is_sample": True,
+            "id": "punjab-fixture",
+            "name": "Punjab Board Test Fixture",
+            "description": "Isolated test fixture; never used as production curriculum.",
+            "is_sample": False,
         }
     ]
 
@@ -66,10 +64,10 @@ def test_curriculum_hierarchy_returns_seeded_children(catalog_client: TestClient
     topics = catalog_client.get(f"/api/chapters/{chapters[0]['id']}/topics").json()["items"]
 
     assert [grade["name"] for grade in grades] == ["Grade 9", "Grade 10"]
-    assert subjects[0]["name"] == "Sample Subject"
-    assert books[0]["name"] == "Sample Book"
-    assert chapters[0]["name"] == "Sample Chapter"
-    assert topics[0]["name"] == "Sample Topic"
+    assert subjects[0]["name"] == "Mathematics"
+    assert books[0]["name"] == "Mathematics 9"
+    assert chapters[0]["name"] == "Number Systems"
+    assert topics[0]["name"] == "Integers"
 
 
 def test_curriculum_catalog_reports_missing_parent(catalog_client: TestClient) -> None:
@@ -79,7 +77,7 @@ def test_curriculum_catalog_reports_missing_parent(catalog_client: TestClient) -
 
 
 def test_known_grade_without_subjects_returns_empty_list(catalog_client: TestClient) -> None:
-    grades = catalog_client.get("/api/curriculum/sample-fixture/grades").json()["items"]
+    grades = catalog_client.get("/api/curriculum/punjab-fixture/grades").json()["items"]
     empty_grade = next(grade for grade in grades if grade["name"] == "Grade 10")
 
     response = catalog_client.get(f"/api/grades/{empty_grade['id']}/subjects")
@@ -88,7 +86,9 @@ def test_known_grade_without_subjects_returns_empty_list(catalog_client: TestCli
     assert response.json() == {"items": []}
 
 
-def test_generate_accepts_count_boundaries(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+def test_generate_accepts_valid_count_boundaries(
+    auth_client: tuple[TestClient, dict[str, str]],
+) -> None:
     client_with_auth, tokens = auth_client
     for count in (1, 50):
         response = client_with_auth.post(
@@ -97,10 +97,38 @@ def test_generate_accepts_count_boundaries(auth_client: tuple[TestClient, dict[s
             json={**valid_generation_request(), "count": count},
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 422
+        assert "approved curriculum catalog" in response.json()["detail"]
 
 
-def test_generate_rejects_count_outside_bounds(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+def test_dashboard_overview_excludes_sample_catalog(catalog_client: TestClient) -> None:
+    response = catalog_client.get("/api/dashboard/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["curricula"] == 1
+    assert payload["books"] == 1
+    assert payload["topics"] == 1
+    assert [subject["name"] for subject in payload["subject_catalog"]] == ["Mathematics"]
+
+
+def test_search_index_remains_private_to_signed_in_users(catalog_client: TestClient) -> None:
+    response = catalog_client.get("/api/curriculum/search", params={"q": "math"})
+
+    assert response.status_code == 401
+
+
+def test_admin_user_api_remains_private_to_signed_in_users(
+    catalog_client: TestClient,
+) -> None:
+    response = catalog_client.get("/api/auth/admin/users")
+
+    assert response.status_code == 401
+
+
+def test_generate_rejects_count_outside_bounds(
+    auth_client: tuple[TestClient, dict[str, str]],
+) -> None:
     client_with_auth, tokens = auth_client
     for count in (0, -5, 51, 100000):
         response = client_with_auth.post(
@@ -124,7 +152,9 @@ def test_generate_rejects_blank_fields(auth_client: tuple[TestClient, dict[str, 
         assert response.status_code == 422
 
 
-def test_generate_rejects_fields_over_max_length(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+def test_generate_rejects_fields_over_max_length(
+    auth_client: tuple[TestClient, dict[str, str]],
+) -> None:
     client_with_auth, tokens = auth_client
     response = client_with_auth.post(
         "/api/ai/generate",
@@ -144,11 +174,16 @@ def test_health_allows_default_frontend_origin() -> None:
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
 
 
-def test_study_chat_rejects_non_education_queries(auth_client: tuple[TestClient, dict[str, str]]) -> None:
+def test_study_chat_rejects_non_education_queries(
+    auth_client: tuple[TestClient, dict[str, str]],
+) -> None:
     client_with_auth, tokens = auth_client
     response = client_with_auth.post(
         "/api/study/chat",
-        headers={"Authorization": f"Bearer {tokens['teacher']}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {tokens['teacher']}",
+            "Content-Type": "application/json",
+        },
         json={"book_ids": [], "prompt": "How do I build a bomb?", "language": "en"},
     )
 
@@ -156,18 +191,18 @@ def test_study_chat_rejects_non_education_queries(auth_client: tuple[TestClient,
     assert "education" in response.json()["detail"].lower()
 
 
-def test_study_chat_returns_empty_portal_message_when_no_books_are_available(
+def test_study_chat_requires_a_book_for_source_grounded_answers(
     auth_client: tuple[TestClient, dict[str, str]],
 ) -> None:
     client_with_auth, tokens = auth_client
     response = client_with_auth.post(
         "/api/study/chat",
-        headers={"Authorization": f"Bearer {tokens['teacher']}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {tokens['teacher']}",
+            "Content-Type": "application/json",
+        },
         json={"book_ids": [], "prompt": "What is this education platform about?", "language": "en"},
     )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert "portal" in payload["answer"].lower()
-    assert "admin" in payload["answer"].lower()
-    assert "books" in payload["answer"].lower()
+    assert response.status_code == 422
+    assert "select at least one uploaded book" in response.json()["detail"].lower()

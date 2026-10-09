@@ -18,6 +18,28 @@ export type CatalogResponse = {
   items: CatalogItem[];
 };
 
+export type DashboardOverview = {
+  curricula: number;
+  grades: number;
+  subjects: number;
+  books: number;
+  approved_books: number;
+  chapters: number;
+  topics: number;
+  subject_catalog: {
+    name: string;
+    books: number;
+    chapters: number;
+    topics: number;
+  }[];
+  recent_generations: {
+    subject: string;
+    chapter: string;
+    topic: string;
+    created_at: string;
+  }[];
+};
+
 export type OfficialBookSearchResult = {
   book_id: number;
   book: string;
@@ -51,16 +73,16 @@ export type HealthResponse = {
   status: string;
 };
 
-export type AuthRole = 'student' | 'teacher' | 'admin';
+export type AuthRole = "student" | "teacher" | "admin";
 
 export type UserSettings = {
   full_name?: string;
   email?: string;
   department?: string;
   phone?: string;
-  interface_language?: 'English' | 'Urdu' | 'Punjabi';
+  interface_language?: "English" | "Urdu" | "Punjabi";
   time_zone?: string;
-  date_format?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+  date_format?: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
   notifications?: {
     weekly_curriculum_summaries?: boolean;
     assessment_reminders?: boolean;
@@ -78,7 +100,7 @@ export type AuthUser = {
 export type AuthTokenResponse = {
   access_token: string;
   refresh_token: string;
-  token_type: 'bearer';
+  token_type: "bearer";
   access_expires_in: number;
   user: AuthUser;
 };
@@ -99,10 +121,10 @@ export type GenerateRequest = {
   book: string;
   chapter: string;
   topic: string;
-  question_type: 'mcq' | 'subjective' | 'quiz' | 'assignment';
+  question_type: "mcq" | "subjective" | "quiz" | "assignment";
   count?: number;
-  difficulty?: 'easy' | 'medium' | 'hard';
-  language?: 'en' | 'ur';
+  difficulty?: "easy" | "medium" | "hard";
+  language?: "en" | "ur";
   grade?: string;
   learning_objectives?: string;
 };
@@ -125,7 +147,11 @@ export type GeneratedQuestionItem = {
 
 export type GenerateResponse = {
   status: string;
-  request: GenerateRequest & { count: number; difficulty: string; language: string };
+  request: GenerateRequest & {
+    count: number;
+    difficulty: string;
+    language: string;
+  };
   items: GeneratedQuestionItem[];
   sources?: {
     book: string;
@@ -191,17 +217,22 @@ export class ApiError extends Error {
     public readonly status: number,
   ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
   }
 }
 
-const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+const apiUrl = (
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+).replace(/\/$/, "");
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 let refreshPromise: Promise<AuthTokenResponse | null> | null = null;
 let tokenUpdateListener: ((tokens: AuthTokenResponse) => void) | null = null;
 
-export function setAuthTokens(access: string | null, refresh: string | null): void {
+export function setAuthTokens(
+  access: string | null,
+  refresh: string | null,
+): void {
   accessToken = access;
   refreshToken = refresh;
 }
@@ -212,10 +243,13 @@ export function setTokenUpdateListener(
   tokenUpdateListener = listener;
 }
 
-async function performFetch(path: string, init?: RequestInit): Promise<Response> {
+async function performFetch(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (accessToken !== null) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
+    headers.set("Authorization", `Bearer ${accessToken}`);
   }
   return fetch(`${apiUrl}${path}`, { ...init, headers });
 }
@@ -228,8 +262,8 @@ async function renewAuthSession(): Promise<AuthTokenResponse | null> {
   refreshPromise = (async () => {
     try {
       const response = await fetch(`${apiUrl}/api/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: activeRefreshToken }),
       });
       if (!response.ok) {
@@ -256,40 +290,55 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await performFetch(path, init);
-    if (response.status === 401 && refreshToken !== null && path !== '/api/auth/refresh') {
+    if (
+      response.status === 401 &&
+      refreshToken !== null &&
+      path !== "/api/auth/refresh"
+    ) {
       const tokens = await renewAuthSession();
       if (tokens !== null) response = await performFetch(path, init);
     }
   } catch {
-    throw new ApiError('The education service is unavailable. Please try again.', 0);
+    throw new ApiError(
+      "The education service is unavailable. Please try again.",
+      0,
+    );
   }
 
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
     const message =
-      typeof body === 'object' && body !== null && 'detail' in body &&
-      typeof body.detail === 'string'
+      typeof body === "object" &&
+      body !== null &&
+      "detail" in body &&
+      typeof body.detail === "string"
         ? body.detail
         : `The request failed (${response.status}).`;
     throw new ApiError(message, response.status);
   }
 
-  if (response.headers.get('content-type')?.includes('application/pdf')) {
+  if (response.headers.get("content-type")?.includes("application/pdf")) {
     return (await response.blob()) as T;
   }
   return (await response.json()) as T;
 }
 
 export function getHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>('/health');
+  return request<HealthResponse>("/health");
+}
+
+export function getDashboardOverview(): Promise<DashboardOverview> {
+  return request<DashboardOverview>("/api/dashboard/overview");
 }
 
 export function getCurricula(): Promise<CurriculumResponse> {
-  return request<CurriculumResponse>('/api/curriculum');
+  return request<CurriculumResponse>("/api/curriculum");
 }
 
 export function getGrades(curriculumCode: string): Promise<CatalogResponse> {
-  return request<CatalogResponse>(`/api/curriculum/${encodeURIComponent(curriculumCode)}/grades`);
+  return request<CatalogResponse>(
+    `/api/curriculum/${encodeURIComponent(curriculumCode)}/grades`,
+  );
 }
 
 export function getSubjects(gradeId: number): Promise<CatalogResponse> {
@@ -314,32 +363,42 @@ export function searchOfficialContent(
   subject?: string,
 ): Promise<OfficialBookSearchResult[]> {
   const params = new URLSearchParams({ q: query });
-  if (grade !== undefined) params.set('grade', String(grade));
-  if (subject) params.set('subject', subject);
-  return request<OfficialBookSearchResult[]>(`/api/curriculum/search?${params}`);
+  if (grade !== undefined) params.set("grade", String(grade));
+  if (subject) params.set("subject", subject);
+  return request<OfficialBookSearchResult[]>(
+    `/api/curriculum/search?${params}`,
+  );
 }
 
-export function importOfficialBook(form: FormData): Promise<OfficialBookImportResponse> {
-  return request<OfficialBookImportResponse>('/api/curriculum/books/import', {
-    method: 'POST',
+export function importOfficialBook(
+  form: FormData,
+): Promise<OfficialBookImportResponse> {
+  return request<OfficialBookImportResponse>("/api/curriculum/books/import", {
+    method: "POST",
     body: form,
   });
 }
 
-export async function registerUser(email: string, password: string): Promise<AuthTokenResponse> {
-  const tokens = await request<AuthTokenResponse>('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+export async function registerUser(
+  email: string,
+  password: string,
+): Promise<AuthTokenResponse> {
+  const tokens = await request<AuthTokenResponse>("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
   setAuthTokens(tokens.access_token, tokens.refresh_token);
   return tokens;
 }
 
-export async function loginUser(email: string, password: string): Promise<AuthTokenResponse> {
-  const tokens = await request<AuthTokenResponse>('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+export async function loginUser(
+  email: string,
+  password: string,
+): Promise<AuthTokenResponse> {
+  const tokens = await request<AuthTokenResponse>("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
   setAuthTokens(tokens.access_token, tokens.refresh_token);
@@ -347,17 +406,19 @@ export async function loginUser(email: string, password: string): Promise<AuthTo
 }
 
 export function getCurrentUser(): Promise<AuthUser> {
-  return request<AuthUser>('/api/auth/me');
+  return request<AuthUser>("/api/auth/me");
 }
 
 export function getUserSettings(): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>('/api/auth/settings');
+  return request<Record<string, unknown>>("/api/auth/settings");
 }
 
-export function updateUserSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>('/api/auth/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+export function updateUserSettings(
+  settings: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/api/auth/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ settings }),
   });
 }
@@ -365,61 +426,69 @@ export function updateUserSettings(settings: Record<string, unknown>): Promise<R
 export async function refreshUserSession(): Promise<AuthTokenResponse> {
   const tokens = await renewAuthSession();
   if (tokens === null) {
-    throw new ApiError('Your session expired. Please sign in again.', 401);
+    throw new ApiError("Your session expired. Please sign in again.", 401);
   }
   return tokens;
 }
 
 export async function logoutUser(refresh: string): Promise<void> {
-  await request<{ status: string }>('/api/auth/logout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  await request<{ status: string }>("/api/auth/logout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refresh }),
   });
   setAuthTokens(null, null);
 }
 
 export function getAdminUsers(): Promise<AdminUserListResponse> {
-  return request<AdminUserListResponse>('/api/auth/admin/users');
+  return request<AdminUserListResponse>("/api/auth/admin/users");
 }
 
 export function createAdminUser(input: AdminUserInput): Promise<AuthUser> {
-  return request<AuthUser>('/api/auth/admin/users', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  return request<AuthUser>("/api/auth/admin/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
-export function generateQuestions(input: GenerateRequest): Promise<GenerateResponse> {
-  return request<GenerateResponse>('/api/ai/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+export function generateQuestions(
+  input: GenerateRequest,
+): Promise<GenerateResponse> {
+  return request<GenerateResponse>("/api/ai/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
 export function getAIGenerationHistory(): Promise<AIHistoryEntry[]> {
-  return request<AIHistoryEntry[]>('/api/ai/history');
+  return request<AIHistoryEntry[]>("/api/ai/history");
 }
 
 export function getAIInsights(): Promise<AIAnalyticsSummary> {
-  return request<AIAnalyticsSummary>('/api/ai/insights');
+  return request<AIAnalyticsSummary>("/api/ai/insights");
 }
 
-export function getAIRecommendations(): Promise<{ status: string; items: { topic: string; type: string; recommendation: string }[] }> {
-  return request<{ status: string; items: { topic: string; type: string; recommendation: string }[] }>('/api/ai/recommendations');
+export function getAIRecommendations(): Promise<{
+  status: string;
+  items: { topic: string; type: string; recommendation: string }[];
+}> {
+  return request<{
+    status: string;
+    items: { topic: string; type: string; recommendation: string }[];
+  }>("/api/ai/recommendations");
 }
 
 export function getStudyBooks(): Promise<StudyBook[]> {
-  return request<StudyBook[]>('/api/study/books');
+  return request<StudyBook[]>("/api/study/books");
 }
 
 export function uploadStudyBook(file: File, title: string): Promise<StudyBook> {
   const body = new FormData();
-  body.append('file', file);
-  body.append('title', title);
-  return request<StudyBook>('/api/study/books', { method: 'POST', body });
+  body.append("file", file);
+  body.append("title", title);
+  return request<StudyBook>("/api/study/books", { method: "POST", body });
 }
 
 export function getStudyBookPdf(bookId: number): Promise<Blob> {
@@ -427,29 +496,31 @@ export function getStudyBookPdf(bookId: number): Promise<Blob> {
 }
 
 export function deleteStudyBook(bookId: number): Promise<{ status: string }> {
-  return request<{ status: string }>(`/api/study/books/${bookId}`, { method: 'DELETE' });
+  return request<{ status: string }>(`/api/study/books/${bookId}`, {
+    method: "DELETE",
+  });
 }
 
 export function askAboutBooks(
   bookIds: number[],
   prompt: string,
-  language: 'en' | 'ur',
+  language: "en" | "ur",
   imageData?: string | null,
   subject?: string,
   intent?: string,
   grade?: string,
 ): Promise<StudyChatResponse> {
-  return request<StudyChatResponse>('/api/study/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  return request<StudyChatResponse>("/api/study/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       book_ids: bookIds,
       prompt,
       language,
       image_data: imageData ?? null,
-      subject: subject ?? 'General Education',
-      intent: intent ?? 'explain',
-      grade: grade ?? 'General',
+      subject: subject ?? "General Education",
+      intent: intent ?? "explain",
+      grade: grade ?? "General",
     }),
   });
 }

@@ -14,17 +14,17 @@ import {
 } from '../../../lib/api';
 
 const defaultRequest: GenerateRequest = {
-  curriculum: 'Punjab Board',
-  subject: 'Mathematics',
-  book: 'Mathematics 9',
-  chapter: 'Algebra',
-  topic: 'Linear equations',
+  curriculum: '',
+  subject: '',
+  book: '',
+  chapter: '',
+  topic: '',
   question_type: 'mcq',
   count: 5,
   difficulty: 'medium',
   language: 'en',
-  grade: 'Grade 9',
-  learning_objectives: 'Understand linear relationships and solve equations systematically.',
+  grade: '',
+  learning_objectives: '',
 };
 
 export default function AIGeneratorPage() {
@@ -99,7 +99,7 @@ export default function AIGeneratorPage() {
         </div>
         <div className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
           <Sparkles size={16} />
-          Active provider: local curriculum generator
+          Requires a configured server-side AI provider
         </div>
       </div>
 

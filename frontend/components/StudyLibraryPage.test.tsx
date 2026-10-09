@@ -55,6 +55,10 @@ describe('StudyLibraryPage', () => {
         [book.id],
         'Explain photosynthesis',
         'ur',
+        null,
+        'General Education',
+        'explain',
+        'General',
       );
     });
     expect(

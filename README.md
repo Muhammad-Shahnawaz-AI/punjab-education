@@ -38,8 +38,9 @@ and their connection.
    bootstrap administrator account.
 
 The API applies Alembic migrations on startup. The Render free web service may spin down when
-inactive, so its first request after a quiet period can take longer. Some dashboard/analytics values
-remain illustrative.
+inactive, so its first request after a quiet period can take longer. The unauthenticated landing
+page is a read-only preview: it shows live curriculum catalog counts only. Management operations and
+private data remain behind authentication.
 
 ## Run backend
 ```bash
@@ -51,19 +52,20 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Database and sample catalog
+## Database and curriculum catalog
 
 The backend defaults to local SQLite. Set `DATABASE_URL` to a PostgreSQL URL for a hosted database.
-Create the schema and optionally load the explicitly non-official placeholder catalog:
+Create the schema:
 
 ```bash
 cd backend
 alembic upgrade head
-python -m app.seed_sample
 ```
 
-The seed is safe to rerun and contains only generic `Sample ...` labels, marked as placeholder data.
-It is not Punjab curriculum content. Catalog endpoints start at `/api/curriculum`, then follow
+Sample fixtures are used only in isolated tests; sample-marked curriculum rows are hidden from the
+catalog and dashboard. The repository does not bundle official textbook data. Import approved,
+rights-cleared books through the admin curriculum importer. Catalog endpoints start at
+`/api/curriculum`, then follow
 `/api/curriculum/{code}/grades`, `/api/grades/{id}/subjects`, `/api/subjects/{id}/books`,
 `/api/books/{id}/chapters`, and `/api/chapters/{id}/topics`.
 
@@ -82,6 +84,18 @@ python -m app.bootstrap_admin
 
 The password above is a value you provide at runtime, not a repository default. Keep the signing
 key and bootstrap password out of source control.
+
+## Public test preview
+
+The homepage and curriculum catalog can be opened without signing in to allow safe link-based
+testing. The preview is read-only and does not grant an administrator session. User management,
+textbook imports, personal study books, question generation, and other protected APIs still require
+an authenticated account with the appropriate role. Do not disable API authorization for public
+testing.
+
+The public curriculum page links to Literaria Education Foundation's PCTB e-book directory.
+Those linked PDFs remain hosted by their source and are not copied into this project; only import
+textbooks after confirming permission or an appropriate open license.
 
 ## Personal PDF study library
 

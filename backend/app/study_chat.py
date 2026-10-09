@@ -1,7 +1,9 @@
 import os
 import re
 from typing import Annotated
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 from sqlalchemy import select
@@ -42,6 +44,7 @@ EDUCATION_TERMS = {
     "university",
     "learning",
     "knowledge",
+    "photosynthesis",
 }
 
 NON_EDUCATION_TERMS = {
@@ -125,29 +128,39 @@ def is_education_related_query(prompt: str) -> bool:
     )
 
 
-def build_portal_answer(language: str, subject: str = "General Education") -> str:
-    if language == "ur":
-        return (
-            f"یہ {subject} کے لیے تعلیمی پورٹل ہے۔ منتظم نے ابھی تک کتابیں شامل نہیں کیں، اس لیے دستیاب کتابی مواد موجود نہیں ہے۔ "
-            "میں صرف تعلیمی سوالات، نصابی موضوعات، سبق، امتحان، مطالعہ، اور تعلیمی رہنمائی میں مدد دے سکتا ہوں۔ "
-            "اگر آپ چاہیں تو میں آپ کے لیے کسی موضوع کی وضاحت، خلاصہ، یا مشق سوالات بنا سکتا ہوں۔"
-        )
-    return (
-        f"This is an education platform focused on {subject}. The administrator has not added books to the portal yet, so there are no uploaded books available right now. "
-        "I can only help with educational questions, curriculum topics, lessons, study guidance, exams, and school or university learning support. "
-        "I can still explain a concept, provide a quick summary, or generate practice questions for this subject."
-    )
-
-
 def detect_subject(prompt: str, requested_subject: str | None = None) -> str:
     if requested_subject and requested_subject.strip():
         return requested_subject.strip()
     text = prompt.casefold()
     for subject, keywords in {
-        "Mathematics": ("math", "mathematics", "algebra", "geometry", "equation", "calculus", "percentage"),
+        "Mathematics": (
+            "math",
+            "mathematics",
+            "algebra",
+            "geometry",
+            "equation",
+            "calculus",
+            "percentage",
+        ),
         "Science": ("science", "biology", "chemistry", "physics", "cell", "experiment", "energy"),
-        "English": ("english", "grammar", "essay", "literature", "reading", "sentence", "vocabulary"),
-        "Computer Science": ("computer", "programming", "coding", "algorithm", "software", "python", "data"),
+        "English": (
+            "english",
+            "grammar",
+            "essay",
+            "literature",
+            "reading",
+            "sentence",
+            "vocabulary",
+        ),
+        "Computer Science": (
+            "computer",
+            "programming",
+            "coding",
+            "algorithm",
+            "software",
+            "python",
+            "data",
+        ),
         "Social Studies": ("history", "geography", "civics", "social", "economics", "culture"),
     }.items():
         if any(keyword in text for keyword in keywords):
@@ -168,56 +181,6 @@ def detect_intent(prompt: str, requested_intent: str | None = None) -> str:
     if any(word in text for word in ("define", "what is", "explain", "why", "how does")):
         return "explain"
     return "explain"
-
-
-def build_local_education_answer(
-    prompt: str,
-    language: str,
-    subject: str,
-    intent: str,
-    excerpts: list[dict[str, object]],
-    image_data: str | None = None,
-) -> str:
-    subject_label = detect_subject(prompt, subject)
-    intent_label = detect_intent(prompt, intent)
-    topic = re.sub(r"[^\w\s\u0600-\u06ff]", " ", prompt).strip()[:90] or "this topic"
-
-    knowledge = {
-        "Mathematics": "Mathematics works by building understanding from patterns, operations, and logic. Start with the core idea, then solve step by step using definitions and formulas.",
-        "Science": "Science explains natural phenomena through observation, evidence, and experimentation. Use clear steps: identify the principle, relate it to the question, and explain the cause and effect.",
-        "English": "English learning improves vocabulary, grammar, reading, and writing. A strong answer should explain the idea clearly, use correct structure, and support it with examples.",
-        "Computer Science": "Computer science focuses on logic, problem solving, and how algorithms work. Break the task into inputs, processing, and expected output before explaining the method.",
-        "Social Studies": "Social studies connects people, history, geography, and civic life. Explain the event, its importance, and the reasoning behind it using context.",
-        "General Education": "Education questions are best answered by clearly explaining the concept, giving a useful example, and linking it to the subject skill being learned.",
-    }
-
-    if intent_label == "summary":
-        body = f"Summary of {topic}: the main idea is to focus on the key concept, the most important facts, and the reason it matters in {subject_label.lower()}. Use a short explanation and a practical example."
-    elif intent_label == "quiz":
-        body = f"Practice question: explain or solve one key idea from {topic} in {subject_label}. Then provide the answer with a short reason and one example."
-    elif intent_label == "solve":
-        body = f"To solve this in {subject_label}, first identify the known values, choose the correct method, write the steps clearly, and check the final result with common sense."
-    else:
-        body = f"Concept explanation: {topic} in {subject_label} is best understood by defining the main idea, linking it to examples, and showing how it is used in real learning."
-
-    if excerpts:
-        body += " The selected book excerpts support a concept-based answer, so the explanation should stay grounded in the chapter topic and avoid introducing unrelated facts."
-    if image_data:
-        body += " The attached image should be interpreted as educational visual content, and the answer should explain the diagram, graph, or text in a learning-focused way."
-
-    body = f"{knowledge.get(subject_label, knowledge['General Education'])} {body}"
-
-    if language == "ur":
-        return (
-            "میں ایک چھوٹا اور تعلیمی طور پر محدود تعلیمی معاون ہوں۔ "
-            f"{body} "
-            "آپ کا سوال تعلیمی موضوع کے اندر ہونا چاہیے، اور میں صرف اسکول/کالج کی تعلیم، نصاب، سبق، امتحان، یا مطالعہ سے متعلق مدد دے سکتا ہوں۔"
-        )
-    return (
-        "I am a small education-only learning assistant. "
-        f"{body} "
-        "This response stays within school, curriculum, lesson, study, and assessment support and avoids unrelated non-educational topics."
-    )
 
 
 class StudyCitation(BaseModel):
@@ -252,8 +215,7 @@ def retrieve_relevant_chunks(
         .where(UserBook.owner_id == owner_id, UserBook.id.in_(book_ids))
     ).all()
     terms = {
-        term.casefold()
-        for term in re.findall(r"[\w\u0600-\u06ff]{2,}", prompt, flags=re.UNICODE)
+        term.casefold() for term in re.findall(r"[\w\u0600-\u06ff]{2,}", prompt, flags=re.UNICODE)
     }
 
     def relevance(row: tuple[UserBook, UserBookChunk]) -> tuple[int, int, int]:
@@ -284,13 +246,95 @@ def _chat_completion(
             detail="I can help only with education-related queries and school learning topics.",
         )
 
-    if not excerpts and not prompt.strip():
-        raise HTTPException(status_code=400, detail="Please enter a learning question.")
-
     if not excerpts:
-        return build_portal_answer(language, detect_subject(prompt, subject))
+        raise HTTPException(
+            status_code=422,
+            detail="No relevant text was found in the selected books.",
+        )
 
-    return build_local_education_answer(prompt, language, detect_subject(prompt, subject), detect_intent(prompt, intent), excerpts, image_data)[:12000]
+    provider = os.getenv("LLM_PROVIDER", "").strip()
+    model = os.getenv("LLM_MODEL", "").strip()
+    api_key = os.getenv("LLM_API_KEY", "").strip()
+    base_url = (
+        os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
+        or "https://api.openai.com/v1"
+    )
+    if not provider or not model or not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Study AI is not configured. Set LLM_PROVIDER, LLM_MODEL, and LLM_API_KEY.",
+        )
+    if urlparse(base_url).scheme != "https":
+        raise HTTPException(
+            status_code=503,
+            detail="Study AI requires an HTTPS LLM_BASE_URL.",
+        )
+
+    excerpt_context = "\n\n".join(
+        f"[{excerpt['book_title']}, page {excerpt['page_number']}]\n{excerpt['text']}"
+        for excerpt in excerpts
+    )
+    language_name = "Urdu" if language == "ur" else "English"
+    user_content: str | list[dict[str, object]] = (
+        f"Subject: {subject}\nRequested task: {intent}\n"
+        f"Question: {prompt}\n\nSelected book excerpts:\n{excerpt_context}"
+    )
+    if image_data:
+        user_content = [
+            {
+                "type": "text",
+                "text": (
+                    f"Subject: {subject}\nRequested task: {intent}\n"
+                    f"Question: {prompt}\n\nSelected book excerpts:\n{excerpt_context}"
+                ),
+            },
+            {"type": "image_url", "image_url": {"url": image_data}},
+        ]
+    try:
+        response = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"******",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Answer in {language_name}. This is an education study assistant. "
+                            "Answer using only the selected book excerpts and attached educational "
+                            "image. If they do not contain enough information, clearly say so. "
+                            "Do not invent facts. Keep the answer concise and cite supporting pages."
+                        ),
+                    },
+                    {"role": "user", "content": user_content},
+                ],
+                "temperature": 0.2,
+            },
+            timeout=30.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="The configured Study AI provider request failed.",
+        ) from error
+
+    try:
+        answer = response.json()["choices"][0]["message"]["content"].strip()
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+        raise HTTPException(
+            status_code=502,
+            detail="The configured Study AI provider returned an invalid response.",
+        ) from error
+    if not answer:
+        raise HTTPException(
+            status_code=502,
+            detail="The configured Study AI provider returned an empty answer.",
+        )
+    return answer[:12000]
 
 
 @router.post("/chat", response_model=StudyChatResponse)
@@ -309,15 +353,10 @@ def chat_about_books(
         )
 
     if not request.book_ids:
-        answer = _chat_completion(
-            prompt,
-            request.language,
-            [],
-            subject=request.subject,
-            intent=request.intent,
-            image_data=request.image_data,
+        raise HTTPException(
+            status_code=422,
+            detail="Select at least one uploaded book to ask a source-grounded question.",
         )
-        return StudyChatResponse(answer=answer, citations=[])
 
     relevant = retrieve_relevant_chunks(db, user.id, request.book_ids, prompt)
     excerpts: list[dict[str, object]] = []

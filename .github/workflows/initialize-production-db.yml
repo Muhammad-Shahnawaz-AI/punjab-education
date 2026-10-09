@@ -53,12 +53,6 @@ jobs:
         run: alembic upgrade head
         working-directory: backend
 
-      - name: Seed placeholder curriculum catalog
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m app.seed_sample
-        working-directory: backend
-
       - name: Create bootstrap administrator
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
