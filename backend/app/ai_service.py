@@ -77,6 +77,10 @@ def _provider_config() -> dict[str, str]:
         "provider": os.getenv("LLM_PROVIDER", "local-fallback").strip() or "local-fallback",
         "model": os.getenv("LLM_MODEL", "local-curriculum-generator").strip() or "local-curriculum-generator",
         "api_key": os.getenv("LLM_API_KEY", "").strip(),
+        "base_url": (
+            os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
+            or "https://api.openai.com/v1"
+        ),
     }
 
 
@@ -90,6 +94,11 @@ def _ur_text(value: str) -> str:
 
 def _build_prompt(req: dict[str, Any]) -> str:
     language = req.get("language") or "en"
+    source_context = "\n\nApproved textbook source excerpts:\n" + "\n".join(
+        f"[{source['source_name']} | {source['book']} | {source['chapter']} | "
+        f"page {source['page']}]\n{source['text']}"
+        for source in req.get("source_excerpts", [])
+    ) if req.get("source_excerpts") else ""
     if language == "ur":
         return (
             f"Punjab curriculum context: {req['curriculum']} | {req.get('subject')} | "
@@ -98,12 +107,14 @@ def _build_prompt(req: dict[str, Any]) -> str:
             f"learning objectives={req.get('learning_objectives') or 'general conceptual mastery'}. "
             "Generate curriculum-aligned, factually grounded educational material only, use the supplied topic and chapter context, "
             "and ensure all content is valid for classroom use."
+            f"{source_context}"
         )
     return (
         f"Punjab curriculum context: {req['curriculum']} | {req.get('subject')} | {req.get('book')} | "
         f"{req.get('chapter')} | {req.get('topic')} | difficulty={req.get('difficulty')} | "
         f"count={req.get('count')} | learning objectives={req.get('learning_objectives') or 'general conceptual mastery'}. "
         "Generate curriculum-aligned, factually grounded educational material only, using the supplied context and valid educational structure."
+        f"{source_context}"
     )
 
 
@@ -303,12 +314,17 @@ def _provider_generation(req: dict[str, Any]) -> list[dict[str, Any]]:
     config = _provider_config()
     provider = config["provider"]
     if provider == "local-fallback" or not config["api_key"]:
+        if req.get("source_excerpts"):
+            raise HTTPException(
+                status_code=503,
+                detail="Configure an AI provider to generate questions grounded in the selected textbook.",
+            )
         return _build_local_items(req)
 
     prompt = _build_prompt(req)
     try:
         response = httpx.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{config['base_url']}/chat/completions",
             headers={
                 "Authorization": f"Bearer {config['api_key']}",
                 "Content-Type": "application/json",
@@ -328,6 +344,11 @@ def _provider_generation(req: dict[str, Any]) -> list[dict[str, Any]]:
         message = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
         generated = message.strip()
         if not generated:
+            if req.get("source_excerpts"):
+                raise HTTPException(
+                    status_code=502,
+                    detail="The AI provider returned no textbook-grounded content.",
+                )
             return _build_local_items(req)
         parsed = __import__("json").loads(generated)
         if isinstance(parsed, list):
@@ -335,11 +356,24 @@ def _provider_generation(req: dict[str, Any]) -> list[dict[str, Any]]:
         if isinstance(parsed, dict) and isinstance(parsed.get("items"), list):
             return parsed["items"]
     except Exception:
+        if req.get("source_excerpts"):
+            raise HTTPException(
+                status_code=502,
+                detail="The AI provider failed to generate textbook-grounded content.",
+            )
         return _build_local_items(req)
+    if req.get("source_excerpts"):
+        raise HTTPException(
+            status_code=502,
+            detail="The AI provider returned an unsupported textbook-grounded response.",
+        )
     return _build_local_items(req)
 
 
-def generate_ai_bundle(req: dict[str, Any]) -> dict[str, Any]:
+def generate_ai_bundle(
+    req: dict[str, Any],
+    source_excerpts: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     cleaned = {
         "curriculum": str(req.get("curriculum", "")).strip(),
         "subject": str(req.get("subject", "")).strip(),
@@ -356,12 +390,21 @@ def generate_ai_bundle(req: dict[str, Any]) -> dict[str, Any]:
     if not all(cleaned[field] for field in ("curriculum", "subject", "book", "chapter", "topic")):
         raise HTTPException(status_code=422, detail="Curriculum, subject, book, chapter, and topic are required")
 
-    provider_items = _provider_generation(cleaned)
+    provider_items = _provider_generation(
+        {**cleaned, "source_excerpts": source_excerpts or []}
+    )
     generated = _validate_generated_items(provider_items, cleaned["question_type"])
     return {
         "status": "ok",
         "request": {**cleaned, "count": max(1, min(cleaned["count"], 10))},
         "items": generated,
+        "sources": [
+            {
+                key: source[key]
+                for key in ("book", "chapter", "page", "source_name", "source_url")
+            }
+            for source in source_excerpts or []
+        ],
         "message": f"Generated {len(generated)} curriculum-grounded {cleaned['question_type']} item(s).",
     }
 

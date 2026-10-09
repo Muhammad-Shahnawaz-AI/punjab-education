@@ -18,6 +18,35 @@ export type CatalogResponse = {
   items: CatalogItem[];
 };
 
+export type OfficialBookSearchResult = {
+  book_id: number;
+  book: string;
+  curriculum: string;
+  grade: number;
+  subject: string;
+  chapter: string | null;
+  topic: string | null;
+  page_number: number;
+  excerpt: string;
+  source_name: string;
+  source_url: string;
+  rights_basis: string;
+};
+
+export type OfficialBookImportResponse = {
+  status: string;
+  book_id: number;
+  book: string;
+  grade: number;
+  subject: string;
+  chapters: number;
+  indexed_chunks: number;
+  page_count: number;
+  ocr_used: boolean;
+  rights_basis: string;
+  source_url: string;
+};
+
 export type HealthResponse = {
   status: string;
 };
@@ -98,6 +127,13 @@ export type GenerateResponse = {
   status: string;
   request: GenerateRequest & { count: number; difficulty: string; language: string };
   items: GeneratedQuestionItem[];
+  sources?: {
+    book: string;
+    chapter: string;
+    page: number;
+    source_name: string;
+    source_url: string;
+  }[];
   message: string;
 };
 
@@ -270,6 +306,24 @@ export function getChapters(bookId: number): Promise<CatalogResponse> {
 
 export function getTopics(chapterId: number): Promise<CatalogResponse> {
   return request<CatalogResponse>(`/api/chapters/${chapterId}/topics`);
+}
+
+export function searchOfficialContent(
+  query: string,
+  grade?: number,
+  subject?: string,
+): Promise<OfficialBookSearchResult[]> {
+  const params = new URLSearchParams({ q: query });
+  if (grade !== undefined) params.set('grade', String(grade));
+  if (subject) params.set('subject', subject);
+  return request<OfficialBookSearchResult[]>(`/api/curriculum/search?${params}`);
+}
+
+export function importOfficialBook(form: FormData): Promise<OfficialBookImportResponse> {
+  return request<OfficialBookImportResponse>('/api/curriculum/books/import', {
+    method: 'POST',
+    body: form,
+  });
 }
 
 export async function registerUser(email: string, password: string): Promise<AuthTokenResponse> {

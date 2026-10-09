@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -12,8 +13,20 @@ from app.auth import router as auth_router
 from app.book_library import router as book_library_router
 from app.curriculum import router as curriculum_router
 from app.database import get_db
-from app.models import AIGenerationLog, User
-from app.security import get_current_user, require_teacher
+from app.models import (
+    AIGenerationLog,
+    Book,
+    Chapter,
+    Curriculum,
+    Grade,
+    OfficialBookChunk,
+    OfficialBookSource,
+    Subject,
+    Topic,
+    User,
+)
+from app.official_content import router as official_content_router
+from app.security import require_teacher
 from app.study_chat import router as study_chat_router
 
 app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0")
@@ -21,6 +34,7 @@ app.include_router(auth_router)
 app.include_router(curriculum_router)
 app.include_router(book_library_router)
 app.include_router(study_chat_router)
+app.include_router(official_content_router)
 cors_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -80,7 +94,72 @@ def generate(
     user: User = Depends(require_teacher),
     db: Session = Depends(get_db),
 ):
-    payload = generate_ai_bundle(req.model_dump())
+    request_data = req.model_dump()
+    filters = [
+        Book.name.ilike(req.book),
+        Subject.name.ilike(req.subject),
+        Curriculum.name.ilike(req.curriculum),
+    ]
+    grade_match = re.search(r"\d+", req.grade or "")
+    if grade_match:
+        filters.append(Grade.level == int(grade_match.group()))
+    matching_book = db.scalar(
+        select(Book)
+        .join(Subject, Subject.id == Book.subject_id)
+        .join(Grade, Grade.id == Subject.grade_id)
+        .join(Curriculum, Curriculum.id == Grade.curriculum_id)
+        .where(*filters)
+    )
+    source_excerpts: list[dict[str, object]] = []
+    if matching_book is not None:
+        source = db.scalar(
+            select(OfficialBookSource).where(OfficialBookSource.book_id == matching_book.id)
+        )
+        if source is not None:
+            chapter = db.scalar(
+                select(Chapter).where(
+                    Chapter.book_id == matching_book.id,
+                    Chapter.name.ilike(req.chapter),
+                )
+            )
+            if chapter is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Chapter '{req.chapter}' was not found in the selected approved book.",
+                )
+            if chapter is not None:
+                topic = db.scalar(
+                    select(Topic).where(
+                        Topic.chapter_id == chapter.id,
+                        Topic.name.ilike(req.topic),
+                    )
+                )
+                chunks_query = select(OfficialBookChunk).where(
+                    OfficialBookChunk.source_id == source.id,
+                    OfficialBookChunk.chapter_id == chapter.id,
+                )
+                topic_chunks = []
+                if topic is not None:
+                    topic_chunks = db.scalars(
+                        chunks_query.where(OfficialBookChunk.content.ilike(f"%{req.topic}%"))
+                        .order_by(OfficialBookChunk.page_number)
+                        .limit(5)
+                    ).all()
+                chunks = topic_chunks or db.scalars(
+                    chunks_query.order_by(OfficialBookChunk.page_number).limit(5)
+                ).all()
+                source_excerpts = [
+                    {
+                        "book": matching_book.name,
+                        "chapter": chapter.name,
+                        "page": chunk.page_number,
+                        "text": chunk.content,
+                        "source_name": source.source_name,
+                        "source_url": source.source_url,
+                    }
+                    for chunk in chunks
+                ]
+    payload = generate_ai_bundle(request_data, source_excerpts=source_excerpts)
     persist_generation_log(db, user.id, req.model_dump(), payload)
     return payload
 

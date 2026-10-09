@@ -106,7 +106,36 @@ provider. Keys remain server-side. If the provider is unconfigured or unavailabl
 returns an explicit error instead of fabricating an answer. The retriever passes selected-book
 excerpts to the provider and includes book/page citations in the response.
 
+## Importing approved curriculum textbooks
+
+Administrators can import a PDF into the shared Punjab curriculum catalog at
+`POST /api/curriculum/books/import` using multipart form fields for curriculum, grade, subject,
+book, source name and HTTPS source URL, a documented `rights_basis`, and
+`rights_confirmed=true`. Attach the PDF as `file`. The endpoint does not scrape or download
+third-party links: first check the publisher's rights/terms and obtain permission or confirm an
+appropriate open license before uploading. Recording a source URL is attribution, not a license.
+
+Provide a reviewed `outline` JSON array to map the book into chapters and topics, for example:
+
+```json
+[{"name":"Algebra","start_page":1,"topics":["Linear equations"]}]
+```
+
+If omitted, the importer detects English/Urdu `Chapter`/`Unit` headings and numbered section
+headings where possible; ambiguous layouts require a human-reviewed outline. Imported page text
+is stored as searchable chunks and can be queried via authenticated
+`GET /api/curriculum/search?q=...`. AI question generation includes matching approved book,
+chapter, and topic excerpts and returns source-page references. Real-book generation requires a
+configured LLM provider; it fails explicitly rather than describing the local sample generator as
+textbook-grounded.
+
+Text-based PDFs are extracted directly. For image-only pages, enable `use_ocr=true`; the backend
+also requires the Tesseract executable in the service runtime. Choose `eng`, `urd`, or `eng+urd`
+for OCR language; install the matching trained-data packages (such as `tesseract-ocr` and
+`tesseract-ocr-urd`) in the deployment image. The Python dependencies are listed in
+`backend/requirements.txt`. Imported PDFs are limited to 50 MB and 1,000 pages.
+
 ## Next implementation layer
-1. Add OCR support for scanned PDFs.
-2. Ingest approved, openly licensed official Punjab curriculum material.
-3. Connect generated questions and study recommendations to assessment and student-attempt workflows.
+1. Connect generated questions to end-to-end assessment and student-attempt workflows.
+2. Build student and teacher modules on the approved curriculum catalog.
+3. Replace illustrative dashboard analytics with live assessment and attempt aggregates.

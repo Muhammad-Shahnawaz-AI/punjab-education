@@ -9,11 +9,12 @@ import {
   type AIAnalyticsSummary,
   type AIHistoryEntry,
   type GeneratedQuestionItem,
+  type GenerateResponse,
   type GenerateRequest,
 } from '../../../lib/api';
 
 const defaultRequest: GenerateRequest = {
-  curriculum: 'Punjab',
+  curriculum: 'Punjab Board',
   subject: 'Mathematics',
   book: 'Mathematics 9',
   chapter: 'Algebra',
@@ -33,6 +34,7 @@ export default function AIGeneratorPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [items, setItems] = useState<GeneratedQuestionItem[]>([]);
+  const [sources, setSources] = useState<NonNullable<GenerateResponse['sources']>>([]);
   const [history, setHistory] = useState<AIHistoryEntry[]>([]);
   const [insights, setInsights] = useState<AIAnalyticsSummary | null>(null);
 
@@ -64,10 +66,12 @@ export default function AIGeneratorPage() {
     setIsSubmitting(true);
     setError(null);
     setMessage(null);
+    setSources([]);
 
     try {
       const response = await generateQuestions(form);
       setItems(response.items);
+      setSources(response.sources ?? []);
       setMessage(response.message);
       const nextHistory = await getAIGenerationHistory();
       setHistory(nextHistory);
@@ -308,6 +312,20 @@ export default function AIGeneratorPage() {
             </div>
             <h2 className="text-xl font-bold text-slate-900">Preview</h2>
           </div>
+          {sources.length > 0 ? (
+            <div className="mt-5 rounded-2xl bg-[var(--lav)]/40 p-4 text-sm">
+              <h3 className="font-semibold">Textbook sources used</h3>
+              <ul className="mt-2 space-y-1">
+                {sources.map((source, index) => (
+                  <li key={`${source.source_url}-${source.page}-${index}`}>
+                    <a className="underline" href={source.source_url} target="_blank" rel="noreferrer">
+                      {source.book}, {source.chapter}, p. {source.page} — {source.source_name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="mt-6 space-y-5">
             {items.map((item, index) => (
               <article key={`${item.question ?? item.title ?? 'item'}-${index}`} className="rounded-2xl border border-slate-200 p-4">

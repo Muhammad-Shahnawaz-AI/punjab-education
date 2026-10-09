@@ -221,6 +221,46 @@ class UserBookChunk(Base):
     content: Mapped[str] = mapped_column(Text)
 
 
+class OfficialBookSource(Base):
+    __tablename__ = "official_book_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    book_id: Mapped[int] = mapped_column(
+        ForeignKey("books.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    source_name: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str] = mapped_column(Text)
+    rights_basis: Mapped[str] = mapped_column(Text)
+    rights_verified_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    filename: Mapped[str] = mapped_column(String(255))
+    file_size: Mapped[int] = mapped_column(Integer)
+    page_count: Mapped[int] = mapped_column(Integer)
+    pdf_data: Mapped[bytes] = mapped_column(LargeBinary)
+    ocr_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OfficialBookChunk(Base):
+    __tablename__ = "official_book_chunks"
+    __table_args__ = (
+        UniqueConstraint("source_id", "position", name="uq_official_book_chunk_position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("official_book_sources.id", ondelete="CASCADE"), index=True
+    )
+    chapter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    topic_id: Mapped[int | None] = mapped_column(
+        ForeignKey("topics.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    page_number: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
+
+
 class GeneratedBatch(Base):
     __tablename__ = "generated_batches"
 
