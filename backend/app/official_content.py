@@ -54,10 +54,7 @@ class ChapterOutline(BaseModel):
     def normalize_topics(cls, value: object) -> object:
         if not isinstance(value, list):
             return value
-        normalized = [
-            topic.strip() if isinstance(topic, str) else topic
-            for topic in value
-        ]
+        normalized = [topic.strip() if isinstance(topic, str) else topic for topic in value]
         if any(not isinstance(topic, str) or not topic for topic in normalized):
             raise ValueError("Topic names must not be empty.")
         if any(len(topic) > 240 for topic in normalized):
@@ -453,7 +450,10 @@ def search_official_content(
         .join(Curriculum, Curriculum.id == Grade.curriculum_id)
         .outerjoin(Chapter, Chapter.id == OfficialBookChunk.chapter_id)
         .outerjoin(Topic, Topic.id == OfficialBookChunk.topic_id)
-        .where(OfficialBookChunk.content.ilike(pattern, escape="\\"))
+        .where(
+            OfficialBookSource.processing_status == "ready",
+            OfficialBookChunk.content.ilike(pattern, escape="\\"),
+        )
         .order_by(OfficialBookChunk.page_number)
         .limit(limit)
     )

@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    BigInteger,
     DateTime,
     Float,
     ForeignKey,
@@ -176,7 +177,9 @@ class AIGenerationLog(Base):
     __tablename__ = "ai_generation_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
     curriculum: Mapped[str] = mapped_column(String(120), default="")
     subject: Mapped[str] = mapped_column(String(120), default="")
     book: Mapped[str] = mapped_column(String(160), default="")
@@ -208,9 +211,7 @@ class UserBook(Base):
 
 class UserBookChunk(Base):
     __tablename__ = "user_book_chunks"
-    __table_args__ = (
-        UniqueConstraint("book_id", "position", name="uq_user_book_chunk_position"),
-    )
+    __table_args__ = (UniqueConstraint("book_id", "position", name="uq_user_book_chunk_position"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     book_id: Mapped[int] = mapped_column(
@@ -233,11 +234,49 @@ class OfficialBookSource(Base):
     rights_basis: Mapped[str] = mapped_column(Text)
     rights_verified_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     filename: Mapped[str] = mapped_column(String(255))
-    file_size: Mapped[int] = mapped_column(Integer)
+    file_size: Mapped[int] = mapped_column(BigInteger)
     page_count: Mapped[int] = mapped_column(Integer)
-    pdf_data: Mapped[bytes] = mapped_column(LargeBinary)
+    pdf_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     ocr_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True, unique=True)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    language: Mapped[str] = mapped_column(String(32), default="English")
+    edition: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processing_status: Mapped[str] = mapped_column(String(24), default="ready", index=True)
+    processing_stage: Mapped[str] = mapped_column(String(40), default="ready")
+    processing_progress: Mapped[int] = mapped_column(Integer, default=100)
+    processed_page_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    pipeline_version: Mapped[str] = mapped_column(String(40), default="v1")
+    processing_lease_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BookUploadSession(Base):
+    __tablename__ = "book_upload_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    storage_key: Mapped[str] = mapped_column(String(512), unique=True)
+    storage_upload_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(24), default="initiated", index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    expected_size: Mapped[int] = mapped_column(BigInteger)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    uploaded_parts: Mapped[dict[str, dict[str, int | str]]] = mapped_column(JSON, default=dict)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    book_id: Mapped[int | None] = mapped_column(
+        ForeignKey("books.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OfficialBookChunk(Base):

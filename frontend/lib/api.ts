@@ -69,6 +69,67 @@ export type OfficialBookImportResponse = {
   source_url: string;
 };
 
+export type AdminBookUploadMetadata = {
+  title: string;
+  author?: string;
+  grade_id: number;
+  subject_id: number;
+  source_name: string;
+  source_url: string;
+  rights_basis: string;
+  rights_confirmed: boolean;
+  language: string;
+  edition?: string;
+  description?: string;
+  use_ocr: boolean;
+  ocr_language: "eng" | "urd" | "eng+urd";
+};
+
+export type AdminBookUploadSession = {
+  id: string;
+  status: string;
+  filename: string;
+  file_size: number;
+  part_size: number;
+  part_count: number;
+  uploaded_bytes: number;
+  uploaded_parts: Record<string, number>;
+  provider: "local" | "s3";
+  expires_at: string;
+  book_id: number | null;
+};
+
+export type AdminBook = {
+  book_id: number;
+  title: string;
+  filename: string;
+  file_size: number;
+  grade: number;
+  subject: string;
+  curriculum: string;
+  author: string | null;
+  language: string;
+  edition: string | null;
+  description: string | null;
+  upload_date: string;
+  upload_status: string;
+  processing_status: "queued" | "processing" | "ready" | "failed";
+  processing_stage: string;
+  processing_progress: number;
+  page_count: number;
+  ocr_used: boolean;
+  last_error: string | null;
+  retry_count: number;
+  checksum_sha256: string | null;
+};
+
+export type AdminBookUploadPolicy = {
+  max_size_bytes: number;
+  part_size_bytes: number;
+  max_concurrent_uploads: number;
+  provider: "local" | "s3";
+};
+
 export type HealthResponse = {
   status: string;
 };
@@ -200,10 +261,20 @@ export type StudyBook = {
   created_at: string;
 };
 
+export type CurriculumStudyBook = {
+  id: number;
+  title: string;
+  grade: number;
+  subject: string;
+  curriculum: string;
+  page_count: number;
+};
+
 export type StudyCitation = {
   book_id: number;
   book_title: string;
   page_number: number;
+  source_type?: "curriculum";
 };
 
 export type StudyChatResponse = {
@@ -317,10 +388,193 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(message, response.status);
   }
 
+  if (response.status === 204) return undefined as T;
   if (response.headers.get("content-type")?.includes("application/pdf")) {
     return (await response.blob()) as T;
   }
   return (await response.json()) as T;
+}
+
+export function getAdminBooks(offset = 0, limit = 50): Promise<AdminBook[]> {
+  return request<AdminBook[]>(`/api/admin/books?offset=${offset}&limit=${limit}`);
+}
+
+export function getAdminBookUploadPolicy(): Promise<AdminBookUploadPolicy> {
+  return request<AdminBookUploadPolicy>("/api/admin/books/upload-policy");
+}
+
+export function getAdminBook(bookId: number): Promise<AdminBook> {
+  return request<AdminBook>(`/api/admin/books/${bookId}`);
+}
+
+export function retryAdminBookProcessing(
+  bookId: number,
+  options: { use_ocr?: boolean; ocr_language?: "eng" | "urd" | "eng+urd" } = {},
+): Promise<AdminBook> {
+  return request<AdminBook>(`/api/admin/books/${bookId}/retry`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+}
+
+export function deleteAdminBook(bookId: number): Promise<void> {
+  return request<void>(`/api/admin/books/${bookId}`, { method: "DELETE" });
+}
+
+export function cancelAdminBookUpload(uploadId: string): Promise<void> {
+  return request<void>(`/api/admin/books/uploads/${uploadId}`, { method: "DELETE" });
+}
+
+async function putPart(
+  url: string,
+  body: Blob,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+  onProgress: (loaded: number) => void,
+): Promise<void> {
+  const attempt = (retry: boolean): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      for (const [name, value] of Object.entries(headers)) {
+        xhr.setRequestHeader(name, value);
+      }
+      if (url.startsWith(apiUrl)) {
+        if (accessToken !== null) {
+          xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+        }
+      }
+      const abort = () => xhr.abort();
+      signal.addEventListener("abort", abort, { once: true });
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(event.loaded);
+      };
+      xhr.onerror = () => {
+        signal.removeEventListener("abort", abort);
+        reject(new ApiError("The upload connection failed. Retry this part.", 0));
+      };
+      xhr.onabort = () => {
+        signal.removeEventListener("abort", abort);
+        reject(new DOMException("Upload paused.", "AbortError"));
+      };
+      xhr.onload = () => {
+        signal.removeEventListener("abort", abort);
+        if (xhr.status === 401 && retry && refreshToken !== null) {
+          void renewAuthSession().then((tokens) => {
+            if (tokens) {
+              void attempt(false).then(resolve, reject);
+            } else {
+              reject(new ApiError("Your session expired. Please sign in again.", 401));
+            }
+          });
+        } else if (xhr.status < 200 || xhr.status >= 300) {
+          let message = `The upload part failed (${xhr.status}).`;
+          try {
+            const response = JSON.parse(xhr.responseText) as { detail?: unknown };
+            if (typeof response.detail === "string") message = response.detail;
+          } catch {
+            // Storage-provider errors do not always return JSON.
+          }
+          reject(new ApiError(message, xhr.status));
+        } else {
+          resolve();
+        }
+      };
+      xhr.send(body);
+    });
+  await attempt(true);
+}
+
+function hexDigest(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function base64Digest(hex: string): string {
+  const bytes = hex.match(/.{2}/g) ?? [];
+  return btoa(String.fromCharCode(...bytes.map((byte) => Number.parseInt(byte, 16))));
+}
+
+export async function uploadAdminBook(
+  file: File,
+  metadata: AdminBookUploadMetadata,
+  options: {
+    signal: AbortSignal;
+    existingSessionId?: string;
+    onSession: (sessionId: string) => void;
+    onProgress: (loaded: number, total: number) => void;
+  },
+): Promise<{ session: AdminBookUploadSession; book: AdminBook }> {
+  let session: AdminBookUploadSession;
+  if (options.existingSessionId) {
+    session = await request<AdminBookUploadSession>(
+      `/api/admin/books/uploads/${options.existingSessionId}`,
+    );
+  } else {
+    session = await request<AdminBookUploadSession>("/api/admin/books/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...metadata,
+        filename: file.name,
+        content_type: file.type || "application/pdf",
+        file_size: file.size,
+      }),
+    });
+    options.onSession(session.id);
+  }
+  if (session.status === "completed" && session.book_id !== null) {
+    return { session, book: await getAdminBook(session.book_id) };
+  }
+  let completedBytes = 0;
+  for (let partNumber = 1; partNumber <= session.part_count; partNumber += 1) {
+    const start = (partNumber - 1) * session.part_size;
+    const end = Math.min(file.size, start + session.part_size);
+    const partLength = end - start;
+    if (session.uploaded_parts[String(partNumber)] === partLength) {
+      completedBytes += partLength;
+      options.onProgress(completedBytes, file.size);
+      continue;
+    }
+    if (options.signal.aborted) throw new DOMException("Upload paused.", "AbortError");
+    const part = file.slice(start, end);
+    const sha256 = hexDigest(await crypto.subtle.digest("SHA-256", await part.arrayBuffer()));
+    const instruction = await request<{
+      url: string;
+      method: "PUT";
+      size: number;
+      provider: "local" | "s3";
+    }>(`/api/admin/books/uploads/${session.id}/parts/${partNumber}/authorize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sha256 }),
+    });
+    const partUrl = instruction.url.startsWith("http")
+      ? instruction.url
+      : `${apiUrl}${instruction.url}`;
+    const partHeaders: Record<string, string> =
+      instruction.provider === "local"
+        ? { "X-Part-SHA256": sha256 }
+        : { "x-amz-checksum-sha256": base64Digest(sha256) };
+    await putPart(partUrl, part, partHeaders, options.signal, (loaded) => {
+      options.onProgress(completedBytes + loaded, file.size);
+    });
+    completedBytes += partLength;
+    options.onProgress(completedBytes, file.size);
+  }
+  const completed = await request<AdminBookUploadSession>(
+    `/api/admin/books/uploads/${session.id}/complete`,
+    { method: "POST" },
+  );
+  if (completed.book_id === null) {
+    throw new ApiError("The PDF was uploaded but no book record was created.", 500);
+  }
+  return {
+    session: completed,
+    book: await getAdminBook(completed.book_id),
+  };
 }
 
 export function getHealth(): Promise<HealthResponse> {
@@ -484,6 +738,10 @@ export function getStudyBooks(): Promise<StudyBook[]> {
   return request<StudyBook[]>("/api/study/books");
 }
 
+export function getCurriculumStudyBooks(): Promise<CurriculumStudyBook[]> {
+  return request<CurriculumStudyBook[]>("/api/study/curriculum-books");
+}
+
 export function uploadStudyBook(file: File, title: string): Promise<StudyBook> {
   const body = new FormData();
   body.append("file", file);
@@ -509,12 +767,14 @@ export function askAboutBooks(
   subject?: string,
   intent?: string,
   grade?: string,
+  officialBookIds: number[] = [],
 ): Promise<StudyChatResponse> {
   return request<StudyChatResponse>("/api/study/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       book_ids: bookIds,
+      official_book_ids: officialBookIds,
       prompt,
       language,
       image_data: imageData ?? null,

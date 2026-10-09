@@ -19,12 +19,95 @@ services:
         value: "15"
       - key: REFRESH_TOKEN_DAYS
         value: "7"
+      - key: APP_ENV
+        value: production
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ENDPOINT_URL
+        value: ""
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: MAX_PDF_SIZE_BYTES
+        value: "21474836480"
+      - key: MULTIPART_CHUNK_SIZE_BYTES
+        value: "8388608"
+      - key: MAX_CONCURRENT_UPLOADS
+        value: "3"
+      - key: MAX_CONCURRENT_PROCESSING_JOBS
+        value: "1"
+      - key: UPLOAD_SESSION_TTL_SECONDS
+        value: "86400"
+      - key: OCR_ENABLED
+        value: "false"
       - key: CORS_ORIGINS
         value: https://punjab-education-web.onrender.com
       - key: BOOTSTRAP_ADMIN_EMAIL
         sync: false
       - key: BOOTSTRAP_ADMIN_PASSWORD
         sync: false
+
+  - type: worker
+    name: punjab-education-book-worker
+    runtime: python
+    plan: starter
+    region: ohio
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.book_worker
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: DATABASE_URL
+      - key: STORAGE_BACKEND
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: STORAGE_BACKEND
+      - key: S3_BUCKET
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: S3_BUCKET
+      - key: S3_REGION
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: S3_REGION
+      - key: S3_ENDPOINT_URL
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: S3_ENDPOINT_URL
+      - key: S3_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: S3_ACCESS_KEY_ID
+      - key: S3_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: punjab-education-api
+          envVarKey: S3_SECRET_ACCESS_KEY
+      - key: MAX_CONCURRENT_PROCESSING_JOBS
+        value: "1"
+      - key: MAX_PDF_PAGES
+        value: "5000"
+      - key: MAX_EXTRACTED_CHARACTERS
+        value: "20000000"
+      - key: MAX_PROCESSING_SECONDS
+        value: "21600"
+      - key: PROCESSING_LEASE_SECONDS
+        value: "3600"
+      - key: OCR_ENABLED
+        value: "false"
 
   - type: web
     name: punjab-education-web

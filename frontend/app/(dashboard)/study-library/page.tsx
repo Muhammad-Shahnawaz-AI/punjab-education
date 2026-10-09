@@ -15,11 +15,13 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   askAboutBooks,
   deleteStudyBook,
+  getCurriculumStudyBooks,
   getStudyBookPdf,
   getStudyBooks,
   uploadStudyBook,
   type StudyBook,
   type StudyCitation,
+  type CurriculumStudyBook,
 } from '../../../lib/api';
 
 type StudyMessage = {
@@ -33,6 +35,8 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export default function StudyLibraryPage() {
   const [books, setBooks] = useState<StudyBook[]>([]);
   const [selectedBookIds, setSelectedBookIds] = useState<number[]>([]);
+  const [curriculumBooks, setCurriculumBooks] = useState<CurriculumStudyBook[]>([]);
+  const [selectedCurriculumBookIds, setSelectedCurriculumBookIds] = useState<number[]>([]);
   const [messages, setMessages] = useState<StudyMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [language, setLanguage] = useState<'en' | 'ur'>('en');
@@ -77,6 +81,26 @@ export default function StudyLibraryPage() {
     }
 
     void loadBooks();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void getCurriculumStudyBooks()
+      .then((readyBooks) => {
+        if (active) setCurriculumBooks(readyBooks);
+      })
+      .catch((loadError: unknown) => {
+        if (active) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Unable to load shared curriculum books.',
+          );
+        }
+      });
     return () => {
       active = false;
     };
@@ -130,12 +154,15 @@ export default function StudyLibraryPage() {
     setNotice(null);
     try {
       const added = await uploadStudyBook(uploadFile, uploadTitle.trim());
-      const nextBooks = await refreshBooks();
-      setSelectedBookIds((current) => [...current, added.id]);
+      await refreshBooks();
+      setSelectedBookIds((current) =>
+        current.length + selectedCurriculumBookIds.length < 3
+          ? [...current, added.id]
+          : current,
+      );
       setUploadFile(null);
       setUploadTitle('');
       setNotice(`${added.title} was added to your library.`);
-      if (nextBooks.length === 1) setSelectedBookIds([added.id]);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Unable to upload this PDF.');
     } finally {
@@ -147,7 +174,19 @@ export default function StudyLibraryPage() {
     setError(null);
     setSelectedBookIds((current) => {
       if (current.includes(bookId)) return current.filter((id) => id !== bookId);
-      if (current.length >= 3) {
+      if (current.length + selectedCurriculumBookIds.length >= 3) {
+        setError('Select up to three books for one study question.');
+        return current;
+      }
+      return [...current, bookId];
+    });
+  }
+
+  function toggleCurriculumBook(bookId: number) {
+    setError(null);
+    setSelectedCurriculumBookIds((current) => {
+      if (current.includes(bookId)) return current.filter((id) => id !== bookId);
+      if (current.length + selectedBookIds.length >= 3) {
         setError('Select up to three books for one study question.');
         return current;
       }
@@ -203,6 +242,7 @@ export default function StudyLibraryPage() {
         selectedSubject,
         selectedIntent,
         selectedGrade,
+        selectedCurriculumBookIds,
       );
       setMessages((current) => [
         ...current,

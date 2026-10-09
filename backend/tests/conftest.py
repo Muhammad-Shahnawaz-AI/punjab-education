@@ -81,6 +81,7 @@ def auth_client(
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.state.test_sessions = testing_sessions
     roles = {
         "teacher": User(email="teacher@example.com", hashed_password="unused", role="teacher"),
         "admin": User(email="admin@example.com", hashed_password="unused", role="admin"),
@@ -88,6 +89,15 @@ def auth_client(
     tokens: dict[str, str] = {}
     with testing_sessions.begin() as db:
         db.add_all(list(roles.values()))
+        curriculum = Curriculum(
+            code="upload-test-curriculum",
+            name="Upload Test Curriculum",
+            description="Isolated upload test data.",
+            is_sample=False,
+        )
+        grade = Grade(level=9, curriculum=curriculum)
+        subject = Subject(name="Mathematics", grade=grade)
+        db.add_all([curriculum, grade, subject])
         db.flush()
         for role, user in roles.items():
             access_token, _, _ = issue_token_pair(db, user)
@@ -102,4 +112,5 @@ def auth_client(
         with rate_limiter.lock:
             rate_limiter.attempts.clear()
         app.dependency_overrides.clear()
+        del app.state.test_sessions
         engine.dispose()

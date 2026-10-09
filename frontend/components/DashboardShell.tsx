@@ -29,6 +29,7 @@ const navigation = [
   { label: "Assessments", href: "/assessments", icon: ClipboardCheck },
   { label: "Students", href: "/students", icon: Users },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
+  { label: "Curriculum Books", href: "/admin/books", icon: BookOpen },
   { label: "User Management", href: "/admin/users", icon: ShieldCheck },
 ];
 
@@ -79,7 +80,7 @@ export function DashboardShell({
         <nav aria-label="Main navigation" className="space-y-1">
           {navigation
             .filter(({ href }) => {
-              if (href === "/admin/users") return user.role === "admin";
+              if (href.startsWith("/admin/")) return user.role === "admin";
               if (user.role === "student") {
                 return [
                   "/",

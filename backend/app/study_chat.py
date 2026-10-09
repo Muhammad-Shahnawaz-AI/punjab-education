@@ -1,16 +1,26 @@
 import os
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, UserBook, UserBookChunk
+from app.models import (
+    Book,
+    Curriculum,
+    Grade,
+    OfficialBookChunk,
+    OfficialBookSource,
+    Subject,
+    User,
+    UserBook,
+    UserBookChunk,
+)
 from app.security import get_current_user
 
 EDUCATION_TERMS = {
@@ -79,6 +89,7 @@ StudyPrompt = Annotated[
 
 class StudyChatRequest(BaseModel):
     book_ids: list[int] = Field(default_factory=list, max_length=3)
+    official_book_ids: list[int] = Field(default_factory=list, max_length=3)
     prompt: StudyPrompt
     language: str = Field(default="en", pattern="^(en|ur)$")
     image_data: str | None = Field(default=None, max_length=200_000)
@@ -93,6 +104,27 @@ class StudyChatRequest(BaseModel):
             raise ValueError("Select each book only once.")
         return value
 
+    @field_validator("official_book_ids")
+    @classmethod
+    def official_book_ids_must_be_unique(cls, value: list[int]) -> list[int]:
+        if len(set(value)) != len(value):
+            raise ValueError("Select each curriculum book only once.")
+        return value
+
+    @model_validator(mode="after")
+    def selected_books_within_limit(self) -> "StudyChatRequest":
+        if len(self.book_ids) + len(self.official_book_ids) > 3:
+            raise ValueError("Select up to three books for one study question.")
+        return self
+
+
+class CurriculumStudyBook(BaseModel):
+    id: int
+    title: str
+    grade: int
+    subject: str
+    curriculum: str
+    page_count: int
 
 def _normalize_to_text(value: str | None) -> str:
     if not value:
@@ -187,6 +219,7 @@ class StudyCitation(BaseModel):
     book_id: int
     book_title: str
     page_number: int
+    source_type: Literal["curriculum"] | None = None
 
 
 class StudyChatResponse(BaseModel):
@@ -230,6 +263,76 @@ def retrieve_relevant_chunks(
     if not selected:
         selected = ranked[:6]
     return selected
+
+
+def retrieve_relevant_curriculum_chunks(
+    db: Session,
+    book_ids: list[int],
+    prompt: str,
+) -> list[tuple[Book, OfficialBookChunk]]:
+    books = db.scalars(
+        select(Book)
+        .join(OfficialBookSource, OfficialBookSource.book_id == Book.id)
+        .where(
+            Book.id.in_(book_ids),
+            OfficialBookSource.processing_status == "ready",
+        )
+    ).all()
+    if len(books) != len(book_ids):
+        raise HTTPException(
+            status_code=404, detail="One or more selected curriculum books are not ready."
+        )
+    chunks = db.execute(
+        select(Book, OfficialBookChunk)
+        .join(OfficialBookSource, OfficialBookSource.book_id == Book.id)
+        .join(OfficialBookChunk, OfficialBookChunk.source_id == OfficialBookSource.id)
+        .where(
+            Book.id.in_(book_ids),
+            OfficialBookSource.processing_status == "ready",
+        )
+    ).all()
+    terms = {
+        term.casefold() for term in re.findall(r"[\w\u0600-\u06ff]{2,}", prompt, flags=re.UNICODE)
+    }
+
+    def relevance(row: tuple[Book, OfficialBookChunk]) -> tuple[int, int, int]:
+        book, chunk = row
+        text = chunk.content.casefold()
+        matched_terms = sum(1 for term in terms if term in text)
+        phrase_match = int(prompt.casefold() in text)
+        return matched_terms, phrase_match, -chunk.position
+
+    ranked = sorted(chunks, key=relevance, reverse=True)
+    selected = [row for row in ranked if relevance(row)[0] > 0 or relevance(row)[1] > 0][:6]
+    return selected if selected else ranked[:6]
+
+
+@router.get("/curriculum-books", response_model=list[CurriculumStudyBook])
+def list_ready_curriculum_books(
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[CurriculumStudyBook]:
+    rows = db.execute(
+        select(Book, Grade, Subject, Curriculum, OfficialBookSource)
+        .join(OfficialBookSource, OfficialBookSource.book_id == Book.id)
+        .join(Subject, Subject.id == Book.subject_id)
+        .join(Grade, Grade.id == Subject.grade_id)
+        .join(Curriculum, Curriculum.id == Grade.curriculum_id)
+        .where(OfficialBookSource.processing_status == "ready")
+        .order_by(Curriculum.name, Grade.level, Subject.name, Book.name)
+        .limit(500)
+    ).all()
+    return [
+        CurriculumStudyBook(
+            id=book.id,
+            title=book.name,
+            grade=grade.level,
+            subject=subject.name,
+            curriculum=curriculum.name,
+            page_count=source.page_count,
+        )
+        for book, grade, subject, curriculum, source in rows
+    ]
 
 
 def _chat_completion(
@@ -337,7 +440,11 @@ def _chat_completion(
     return answer[:12000]
 
 
-@router.post("/chat", response_model=StudyChatResponse)
+@router.post(
+    "/chat",
+    response_model=StudyChatResponse,
+    response_model_exclude_none=True,
+)
 def chat_about_books(
     request: StudyChatRequest,
     user: User = Depends(get_current_user),
@@ -352,16 +459,25 @@ def chat_about_books(
             detail="I can help only with education-related queries and school learning topics.",
         )
 
-    if not request.book_ids:
+    if not request.book_ids and not request.official_book_ids:
         raise HTTPException(
             status_code=422,
             detail="Select at least one uploaded book to ask a source-grounded question.",
         )
 
-    relevant = retrieve_relevant_chunks(db, user.id, request.book_ids, prompt)
+    relevant = (
+        retrieve_relevant_chunks(db, user.id, request.book_ids, prompt)
+        if request.book_ids
+        else []
+    )
+    official_relevant = (
+        retrieve_relevant_curriculum_chunks(db, request.official_book_ids, prompt)
+        if request.official_book_ids
+        else []
+    )
     excerpts: list[dict[str, object]] = []
     citations: list[StudyCitation] = []
-    seen_citations: set[tuple[int, int]] = set()
+    seen_citations: set[tuple[str, int, int]] = set()
     for book, chunk in relevant:
         excerpts.append(
             {
@@ -370,13 +486,32 @@ def chat_about_books(
                 "text": chunk.content[:2000],
             }
         )
-        citation = (book.id, chunk.page_number)
+        citation = ("private", book.id, chunk.page_number)
         if citation not in seen_citations:
             citations.append(
                 StudyCitation(
                     book_id=book.id,
                     book_title=book.title,
                     page_number=chunk.page_number,
+                )
+            )
+            seen_citations.add(citation)
+    for book, chunk in official_relevant:
+        excerpts.append(
+            {
+                "book_title": book.name,
+                "page_number": chunk.page_number,
+                "text": chunk.content[:2000],
+            }
+        )
+        citation = ("curriculum", book.id, chunk.page_number)
+        if citation not in seen_citations:
+            citations.append(
+                StudyCitation(
+                    book_id=book.id,
+                    book_title=book.name,
+                    page_number=chunk.page_number,
+                    source_type="curriculum",
                 )
             )
             seen_citations.add(citation)

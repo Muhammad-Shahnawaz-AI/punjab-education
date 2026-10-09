@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.ai_service import generate_ai_bundle, persist_generation_log
 from app.auth import router as auth_router
 from app.book_library import router as book_library_router
+from app.book_uploads import router as book_uploads_router
 from app.curriculum import router as curriculum_router
 from app.database import get_db
 from app.models import (
@@ -33,6 +34,7 @@ app = FastAPI(title="Punjab Education Intelligence Platform API", version="0.1.0
 app.include_router(auth_router)
 app.include_router(curriculum_router)
 app.include_router(book_library_router)
+app.include_router(book_uploads_router)
 app.include_router(study_chat_router)
 app.include_router(official_content_router)
 cors_origins = [
@@ -140,7 +142,10 @@ def dashboard_overview(
         db.scalar(
             select(func.count())
             .select_from(OfficialBookSource)
-            .where(OfficialBookSource.book_id.in_(book_ids))
+            .where(
+                OfficialBookSource.book_id.in_(book_ids),
+                OfficialBookSource.processing_status == "ready",
+            )
         )
         or 0
     )
@@ -243,12 +248,15 @@ def generate(
         )
     matching_book = matching_books[0]
     source = db.scalar(
-        select(OfficialBookSource).where(OfficialBookSource.book_id == matching_book.id)
+        select(OfficialBookSource).where(
+            OfficialBookSource.book_id == matching_book.id,
+            OfficialBookSource.processing_status == "ready",
+        )
     )
     if source is None:
         raise HTTPException(
             status_code=422,
-            detail="The selected book has no approved textbook PDF indexed yet.",
+            detail="The selected book has no successfully processed textbook PDF yet.",
         )
     chapter = db.scalar(
         select(Chapter).where(

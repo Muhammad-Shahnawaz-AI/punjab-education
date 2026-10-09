@@ -14,3 +14,4 @@ pypdf>=5.1.0,<7
 pypdfium2>=4.30.0,<6
 pytesseract>=0.3.13,<1
 python-multipart>=0.0.20,<1
+boto3>=1.35,<2
